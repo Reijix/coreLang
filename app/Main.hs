@@ -13,7 +13,7 @@ lamExpr :: CoreExpr
 lamExpr = ELam ["x", "y", "z"] (EAp (EVar "x") (EVar "y"))
 
 letExpr :: CoreExpr
-letExpr = ELet recursive [("f\n", EAp (EVar "x") (EVar "y")), ("double", EAp (EVar "x") (EVar "x"))] (EAp (EVar "f") (EVar "z"))
+letExpr = ELet recursive [("f", EAp (EVar "x") (EVar "y")), ("double", EAp (EVar "x") (EVar "x"))] (EAp (EVar "f") (EVar "z"))
 
 main :: IO ()
 main = do
