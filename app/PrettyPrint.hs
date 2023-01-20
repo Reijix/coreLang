@@ -38,18 +38,26 @@ pprExpr prec (EAp (EAp (EVar "|") e1) e2) | prec < 4 = iConcat [pprExpr 4 e1, iS
 pprExpr prec (EAp (EAp (EVar "|") e1) e2) = iConcat [iStr "(", pprExpr 4 e1, iStr " | ", pprExpr 4 e2, iStr ")"]
 pprExpr prec (EAp e1 e2) = pprExpr 10 e1 `iAppend` iStr " " `iAppend` pprExpr 10 e2
 pprExpr prec (ELet isrec defns expr) =
-  iConcat
-    [ iStr keyword,
-      iNewline,
-      iStr " ",
-      iIndent (pprDefns defns),
-      iNewline,
-      iStr "in ",
-      pprExpr 10 expr
-    ]
+  iIndent $
+    iConcat
+      [ iStr keyword,
+        iStr " ",
+        pprDefns defns,
+        iNewline,
+        iStr "in ",
+        pprExpr 10 expr
+      ]
   where
     keyword = if isrec then "letrec" else "let"
-pprExpr prec (ECase expr alters) = iConcat [iStr "case ", pprExpr 10 expr, iStr " of", iNewline, iConcat (map pprAlter alters)]
+pprExpr prec (ECase expr alters) =
+  iIndent $
+    iConcat
+      [ iStr "case ",
+        pprExpr 10 expr,
+        iStr " of",
+        iNewline,
+        iInterleave (iStr ";" `iAppend` iNewline) (map (iIndent . pprAlter) alters)
+      ]
   where
     pprAlter :: (ISeq b) => (Show b) => Alter Name -> b
     pprAlter (id, args, expr) =
@@ -57,8 +65,8 @@ pprExpr prec (ECase expr alters) = iConcat [iStr "case ", pprExpr 10 expr, iStr 
         [ iStr "<",
           iStr (show id),
           iStr "> ",
-          iInterleave (iStr " ") (map iStr args),
-          iStr " -> ",
+          iConcat (map (\a -> iStr a `iAppend` iStr " ") args),
+          iStr "-> ",
           pprExpr 10 expr
         ]
 pprExpr prec (ELam params expr) = iConcat [iStr "\\", iInterleave (iStr " ") (map iStr params), iStr ". ", pprExpr 10 expr]
@@ -75,10 +83,10 @@ pprDefn :: (ISeq b) => (Show b) => (Name, CoreExpr) -> b
 pprDefn (name, expr) = iConcat [iStr name, iStr " = ", iIndent (pprExpr 10 expr)]
 
 pprProgram :: (ISeq b) => (Show b) => CoreProgram -> b
-pprProgram scDefns = iInterleave iNewline (map pprScDefn scDefns)
+pprProgram scDefns = iInterleave (iStr ";" `iAppend` iNewline) (map pprScDefn scDefns)
   where
     pprScDefn :: (ISeq b) => (Show b) => CoreScDefn -> b
-    pprScDefn (name, params, expr) = iConcat [iStr name, iStr " ", iInterleave (iStr " ") (map iStr params), iStr " = ", pprExpr 10 expr]
+    pprScDefn (name, params, expr) = iConcat [iStr name, iStr " ", iConcat (map (\p -> iStr p `iAppend` iStr " ") params), iStr "= ", pprExpr 10 expr]
 
 iConcat :: (ISeq b) => (Show b) => [b] -> b
 iConcat = foldl iAppend iNil
