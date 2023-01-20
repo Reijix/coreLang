@@ -182,6 +182,12 @@ main = do
   contents <- hGetContents handle
   let parsed = parse contents
   let lexed = lex 0 contents
-  print parsed
+  putStrLn (iDisplay (pprProgram parsed :: ISeqRep))
+
+  -- dangling else not working yet!
+  handle <- openFile "test-programs/danglingelse.cl" ReadMode
+  contents <- hGetContents handle
+  let parsed = parse contents
+  let lexed = lex 0 contents
   putStrLn (iDisplay (pprProgram parsed :: ISeqRep))
   return ()
