@@ -122,11 +122,12 @@ pAExpr = pEVar <|> pENum <|> pEConstr <|> pParensExpr
     pEVar = pApply pVar EVar
     pParensExpr = pThen3 (\l expr r -> expr) (pLit "(") pExpr (pLit ")")
 
+-- Helper type for parsing Expressions while avoiding left recursion
+data PartialExpression = NoOp | FoundOp Name CoreExpr
+
 pExpr :: Parser CoreExpr
-pExpr = pAp <|> pLocDef <|> pLocRecDef <|> pCase <|> pLam <|> pBinAp <|> pAExpr
+pExpr = pLocDef <|> pLocRecDef <|> pCase <|> pLam <|> pExpr1
   where
-    pAp = pApply (pOneOrMore pAExpr) (foldr1 EAp)
-    pBinAp = pThen3 (\l op r -> EAp (EAp (EVar op) l) r) pExpr pBinOp pExpr
     pLocDef =
       pThen4
         (\_ defns _ expr -> ELet nonRecursive defns expr)
@@ -149,10 +150,27 @@ pExpr = pAp <|> pLocDef <|> pLocRecDef <|> pCase <|> pLam <|> pBinAp <|> pAExpr
         (pLit "of")
         pAlts
     pLam = pThen4 (\_ vars _ expr -> ELam vars expr) (pLit "\\ ") (pOneOrMore pVar) (pLit ".") pExpr
-    pBinOp = pArithOp <|> pRelOp <|> pBoolOp
+    pExpr1 = pThen assembleOp pExpr2 pExpr1c
+    pExpr1c = pThen FoundOp (pLit "|") pExpr1 <|> pEmpty NoOp
+    pExpr2 = pThen assembleOp pExpr3 pExpr2c
+    pExpr2c = pThen FoundOp (pLit "&") pExpr2 <|> pEmpty NoOp
+    pExpr3 = pThen assembleOp pExpr4 pExpr3c
+    pExpr3c = pThen FoundOp pRelOp pExpr4 <|> pEmpty NoOp
+    pExpr4 = pThen assembleOp pExpr5 pExpr4c
+    pExpr4c =
+      pThen FoundOp (pLit "+") pExpr4
+        <|> pThen FoundOp (pLit "-") pExpr5
+        <|> pEmpty NoOp
+    pExpr5 = pThen assembleOp pExpr6 pExpr5c
+    pExpr5c =
+      pThen FoundOp (pLit "*") pExpr5
+        <|> pThen FoundOp (pLit "/") pExpr6
+        <|> pEmpty NoOp
+    pExpr6 = pApply (pOneOrMore pAExpr) (foldr1 EAp)
+    assembleOp e1 NoOp = e1
+    assembleOp e1 (FoundOp op e2) = EAp (EAp (EVar op) e1) e2
     pArithOp = pLit "+" <|> pLit "-" <|> pLit "*" <|> pLit "/"
     pRelOp = pLit "<" <|> pLit "<=" <|> pLit "==" <|> pLit "~=" <|> pLit ">=" <|> pLit ">"
-    pBoolOp = pLit "&" <|> pLit "|"
     pDefns = pOneOrMoreWithSep (pThen3 (\var _ expr -> (var, expr)) pVar (pLit "=") pExpr) (pLit ";")
     pAlts =
       pOneOrMoreWithSep
@@ -170,7 +188,9 @@ syntax :: [Token] -> CoreProgram
 syntax = take_first_parse . pProgram
   where
     take_first_parse ((prog, []) : other_parses) = prog
-    take_first_parse other = error ("Syntax error" ++ show other)
+    take_first_parse other = error ("Syntax error, was able to take: " ++ (show . fst . head $ other) ++ " wasnt able to take: " ++ (show . snd . head $ other))
+
+-- TODO refactor to use Maybe type!!
 
 parse :: String -> CoreProgram
 parse = syntax . lex 0
