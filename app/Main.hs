@@ -1,25 +1,62 @@
 module Main where
 
-import PrettyPrint
-import Syntax
+import Data.List (genericTake)
+import Data.Semigroup ((<>))
+import Options.Applicative
+import Parser (parse)
+import PrettyPrint (ISeqRep, iDisplay, pprExpr, pprProgram)
+import System.IO
 
-atomExpr :: CoreExpr
-atomExpr = EVar "test"
+data CmdOption = CmdOption
+  { sourceFile :: String,
+    destinationFile :: String,
+    prettyPrint :: Bool
+  }
 
-nonAtomExpr :: CoreExpr
-nonAtomExpr = EAp (ENum 5) (ENum 10)
-
-lamExpr :: CoreExpr
-lamExpr = ELam ["x", "y", "z"] (EAp (EVar "x") (EVar "y"))
-
-letExpr :: CoreExpr
-letExpr = ELet recursive [("f", EAp (EVar "x") (EVar "y")), ("double", EAp (EAp (EVar "+") (EVar "x")) (EVar "x"))] (EAp (EVar "f") (EVar "z"))
+cmdOption :: Parser CmdOption
+cmdOption =
+  CmdOption
+    <$> argument
+      str
+      ( metavar "<source file>"
+      )
+    <*> strOption
+      ( short 'o'
+          <> metavar "<destination file>"
+          <> help "Place the output into <destination file>."
+          <> showDefault
+          <> value "a.out"
+      )
+    <*> switch
+      ( short 'p'
+          <> help "PrettyPrint the parsed program"
+          <> showDefault
+      )
 
 main :: IO ()
-main = do
-  print (EVar "test" :: CoreExpr)
-  print (isAtomicExpr nonAtomExpr)
-  print (isAtomicExpr atomExpr)
-  print (iDisplay (pprExpr 10 nonAtomExpr :: ISeqRep))
-  putStrLn (iDisplay (pprExpr 10 lamExpr :: ISeqRep))
-  putStrLn (iDisplay (pprExpr 10 letExpr :: ISeqRep))
+main = run =<< execParser opts
+  where
+    opts =
+      info
+        (cmdOption <**> helper)
+        ( fullDesc
+            <> progDesc "Compiles a given coreLang source-code."
+            <> header "This is a compiler for the coreLang as presented in \"Implementing Functional Langauges A Tutorial\""
+        )
+
+run :: CmdOption -> IO ()
+-- no ppr
+run (CmdOption sourceFile _ False) = do
+  source <- openFile sourceFile ReadMode
+  sourceText <- hGetContents source
+
+  let program = parse sourceText
+  print program
+-- do ppr
+run (CmdOption sourceFile _ True) = do
+  source <- openFile sourceFile ReadMode
+  sourceText <- hGetContents source
+
+  let program = parse sourceText
+  let pprTree = pprProgram program :: ISeqRep
+  putStrLn (iDisplay pprTree)
