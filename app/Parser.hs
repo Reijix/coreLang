@@ -184,30 +184,11 @@ pExpr = pLocDef <|> pLocRecDef <|> pCase <|> pLam <|> pExpr1
         (pLit ";")
 
 ------------- RESULT ------------
-syntax :: [Token] -> CoreProgram
+syntax :: [Token] -> Either CoreProgram String
 syntax = take_first_parse . pProgram
   where
-    take_first_parse ((prog, []) : other_parses) = prog
-    take_first_parse other = error ("Syntax error, was able to take: " ++ (show . fst . head $ other) ++ " wasnt able to take: " ++ (show . snd . head $ other))
+    take_first_parse ((prog, []) : other_parses) = Left prog
+    take_first_parse other = Right ("Syntax error, was able to take:\n" ++ (show . fst . head $ other) ++ "\nwasnt able to take:\n" ++ (show . snd . head $ other))
 
--- TODO refactor to use Maybe type!!
-
-parse :: String -> CoreProgram
+parse :: String -> Either CoreProgram String
 parse = syntax . lex 0
-
-------------- TESTING -----------
-main :: IO ()
-main = do
-  handle <- openFile "test-programs/simpl.cl" ReadMode
-  contents <- hGetContents handle
-  let parsed = parse contents
-  let lexed = lex 0 contents
-  putStrLn (iDisplay (pprProgram parsed :: ISeqRep))
-
-  -- dangling else not working yet!
-  handle <- openFile "test-programs/danglingelse.cl" ReadMode
-  contents <- hGetContents handle
-  let parsed = parse contents
-  let lexed = lex 0 contents
-  putStrLn (iDisplay (pprProgram parsed :: ISeqRep))
-  return ()

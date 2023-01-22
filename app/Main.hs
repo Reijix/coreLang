@@ -4,7 +4,7 @@ import Data.List (genericTake)
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Parser (parse)
-import PrettyPrint (ISeqRep, iDisplay, pprExpr, pprProgram)
+import PrettyPrint (iDisplay, prettyProgram)
 import System.IO
 
 data CmdOption = CmdOption
@@ -50,13 +50,17 @@ run (CmdOption sourceFile _ False) = do
   source <- openFile sourceFile ReadMode
   sourceText <- hGetContents source
 
-  let program = parse sourceText
-  print program
+  let parsed = parse sourceText
+  case parsed of
+    Left prog -> print prog
+    Right err -> putStrLn err
+
 -- do ppr
 run (CmdOption sourceFile _ True) = do
   source <- openFile sourceFile ReadMode
   sourceText <- hGetContents source
 
-  let program = parse sourceText
-  let pprTree = pprProgram program :: ISeqRep
-  putStrLn (iDisplay pprTree)
+  let parsed = parse sourceText
+  case parsed of
+    Left prog -> putStrLn . iDisplay . prettyProgram $ prog
+    Right err -> putStrLn err

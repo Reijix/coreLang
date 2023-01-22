@@ -128,3 +128,6 @@ instance ISeq ISeqRep where
         (IIndent seq, ind) -> flatten col ((seq, col) : xs)
       spaces :: Int -> String
       spaces num = replicate num ' '
+
+prettyProgram :: CoreProgram -> ISeqRep
+prettyProgram = pprProgram
