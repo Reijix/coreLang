@@ -20,11 +20,12 @@ class ISeq t where
  - |          ; level 4
  - -}
 
+wrapParen :: (ISeq b) => (Show b) => Bool -> b -> b
+wrapParen b x = if b then iConcat [iStr "(", x, iStr ")"] else x
+
 pprExpr :: (ISeq b) => (Show b) => Int -> CoreExpr -> b
-pprExpr prec (EAp (EAp (EVar "+") e1) e2) | prec < 1 = iConcat [iStr "(", pprExpr 1 e1, iStr " + ", pprExpr 1 e2, iStr ")"]
-pprExpr prec (EAp (EAp (EVar "+") e1) e2) = iConcat [pprExpr 1 e1, iStr " + ", pprExpr 1 e2]
-pprExpr prec (EAp (EAp (EVar "-") e1) e2) | prec < 1 = iConcat [iStr "(", pprExpr 1 e1, iStr " - ", pprExpr 2 e2, iStr ")"]
-pprExpr prec (EAp (EAp (EVar "-") e1) e2) = iConcat [pprExpr 1 e1, iStr " - ", pprExpr 2 e2]
+pprExpr prec (EAp (EAp (EVar "+") e1) e2) = wrapParen (prec < 1) (iConcat [pprExpr 1 e1, iStr " + ", pprExpr 1 e2])
+pprExpr prec (EAp (EAp (EVar "-") e1) e2) = wrapParen (prec < 1) (iConcat [pprExpr 1 e1, iStr " - ", pprExpr 0 e2])
 pprExpr prec (EAp (EAp (EVar "*") e1) e2) = iConcat [pprExpr 0 e1, iStr " * ", pprExpr 0 e2]
 pprExpr prec (EAp (EAp (EVar "/") e1) e2) = iConcat [pprExpr 0 e1, iStr " / ", pprExpr 0 e2]
 pprExpr prec (EAp (EAp (EVar "<") e1) e2) = iConcat [pprExpr 2 e1, iStr " < ", pprExpr 2 e2]
@@ -33,9 +34,8 @@ pprExpr prec (EAp (EAp (EVar "<=") e1) e2) = iConcat [pprExpr 2 e1, iStr " <= ",
 pprExpr prec (EAp (EAp (EVar "==") e1) e2) = iConcat [pprExpr 2 e1, iStr " == ", pprExpr 2 e2]
 pprExpr prec (EAp (EAp (EVar "~=") e1) e2) = iConcat [pprExpr 2 e1, iStr " ~= ", pprExpr 2 e2]
 pprExpr prec (EAp (EAp (EVar ">=") e1) e2) = iConcat [pprExpr 2 e1, iStr " >= ", pprExpr 2 e2]
-pprExpr prec (EAp (EAp (EVar "&") e1) e2) = iConcat [pprExpr 3 e1, iStr " & ", pprExpr 3 e2]
-pprExpr prec (EAp (EAp (EVar "|") e1) e2) | prec < 4 = iConcat [pprExpr 4 e1, iStr " | ", pprExpr 4 e2]
-pprExpr prec (EAp (EAp (EVar "|") e1) e2) = iConcat [iStr "(", pprExpr 4 e1, iStr " | ", pprExpr 4 e2, iStr ")"]
+pprExpr prec (EAp (EAp (EVar "&") e1) e2) = iConcat [pprExpr 3 e1, iStr " & ", pprExpr 2 e2]
+pprExpr prec (EAp (EAp (EVar "|") e1) e2) = wrapParen (prec < 4) (iConcat [iStr "(", pprExpr 4 e1, iStr " | ", pprExpr 3 e2, iStr ")"])
 pprExpr prec (EAp e1 e2) = pprExpr 10 e1 `iAppend` iStr " " `iAppend` pprExpr 10 e2
 pprExpr prec (ELet isrec defns expr) =
   iIndent $
