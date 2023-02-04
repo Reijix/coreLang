@@ -1,4 +1,4 @@
-module Heap (Heap, hInitial, hAlloc, hUpdate, hFree, hLookup, hAddresses, hSize, hNull, hIsNull, showAddr) where
+module Heap (Heap, Addr, hInitial, hAlloc, hUpdate, hFree, hLookup, hAddresses, hSize, hNull, hIsNull, showAddr) where
 
 import Assoc
 
