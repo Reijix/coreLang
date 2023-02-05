@@ -1,9 +1,7 @@
 module Parser where
 
 import Data.Char (isDigit, isLetter, isSpace)
-import PrettyPrint
 import Syntax
-import System.IO
 import Prelude hiding (lex, (<*>))
 
 -- linenumber, text
@@ -166,7 +164,7 @@ pExpr = pLocDef <|> pLocRecDef <|> pCase <|> pLam <|> pExpr1
       pThen FoundOp (pLit "*") pExpr5
         <|> pThen FoundOp (pLit "/") pExpr6
         <|> pEmpty NoOp
-    pExpr6 = pApply (pOneOrMore pAExpr) (foldr1 EAp)
+    pExpr6 = pApply (pOneOrMore pAExpr) (foldl1 EAp)
     assembleOp e1 NoOp = e1
     assembleOp e1 (FoundOp op e2) = EAp (EAp (EVar op) e1) e2
     pArithOp = pLit "+" <|> pLit "-" <|> pLit "*" <|> pLit "/"
