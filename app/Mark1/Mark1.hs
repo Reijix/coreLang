@@ -2,7 +2,7 @@ module Mark1 where
 
 import Syntax
 import Parser ( parse )
-import Heap ( Addr, Heap, hInitial, hAlloc, hLookup )
+import Heap ( Addr, Heap, hInitial, hAlloc, hLookup, hAddresses )
 import Assoc ( Assoc, aLookup )
 import TIStats
     ( TIStats, tiStatInitial, tiStatIncSteps, tiStatGetSteps )
@@ -127,10 +127,18 @@ showResults :: [TIState] -> String
 showResults states = iDisplay (iConcat [iLayn (map showState states), showStats (last states)])
 
 showState :: TIState -> ISeq
-showState (stack, dump, heap, globals, stats) = iConcat [ showStack heap stack, iNewline ]
+showState (stack, dump, heap, globals, stats) = iConcat [ 
+    showStack heap stack, iNewline,
+    showHeap heap, iNewline ]
+
+showHeap :: TIHeap -> ISeq
+showHeap heap = iConcat [ iStr "Heap [", iIndent (iInterleave iNewline (map show_heap_item addrs)), iStr " ]"]
+    where
+        addrs = hAddresses heap
+        show_heap_item addr = iConcat [ showFWAddr addr, iStr ": ", showNode (hLookup heap addr) ]
 
 showStack :: TIHeap -> TIStack -> ISeq
-showStack heap stack = iConcat [ iStr "Stk [", iIndent (iInterleave iNewline (map show_stack_item stack)), iStr " ]"]
+showStack heap stack = iConcat [ iStr "Stk  [", iIndent (iInterleave iNewline (map show_stack_item stack)), iStr " ]"]
     where
         show_stack_item addr = iConcat [ showFWAddr addr, iStr ": ", showStkNode heap (hLookup heap addr)]
 
