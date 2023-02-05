@@ -6,6 +6,8 @@ import Heap
 import Assoc
 import TIStats
 import UsefulFuns
+import PrettyPrint
+import GHC.IO.Handle (hLookAhead)
 
 -------- TIState definition
 -- the state contains the elements below
@@ -16,6 +18,7 @@ type TIStack = [Addr]
 
 -- Dump is not used in mark1, so its just a dummy
 data TIDump = DummyTIDump
+    deriving (Show)
 initialTIDump :: TIDump
 initialTIDump = DummyTIDump
 
@@ -23,6 +26,7 @@ type TIHeap = Heap Node
 data Node = NAp Addr Addr
           | NSupercomb Name [Name] CoreExpr
           | NNum Int
+    deriving (Show)
 
 -- TIGlobals associates each supercombinator with the address of a heap node containing its definition
 type TIGlobals = Assoc Name Addr
@@ -72,8 +76,8 @@ tiFinal ([], dump, heap, globals, stats) = error "Empty stack!"
 tiFinal state = False
 
 isDataNode :: Node -> Bool
-isDataNode (NNum n) = True
-isDataNode node     = False
+isDataNode (NNum _) = True
+isDataNode _        = False
 
 step :: TIState -> TIState
 step state = dispatch (hLookup heap (head stack))
@@ -106,7 +110,7 @@ getArgs heap (sc:stack) = map get_arg stack
 
 instantiate :: CoreExpr -> TIHeap -> Assoc Name Addr -> (TIHeap, Addr)
 instantiate (ENum n) heap env = hAlloc heap (NNum n)
-instantiate (EAp e1 e2) heap env = hAlloc heap2 (NAp a2 a2)
+instantiate (EAp e1 e2) heap env = hAlloc heap2 (NAp a1 a2)
     where
         (heap1, a1) = instantiate e1 heap env
         (heap2, a2) = instantiate e2 heap1 env
@@ -118,7 +122,36 @@ instantiate (ECase e alts) heap env = error "Can't instantiate case exprs"
 instantiateConstr tag arity heap env = error "Can't instantiate constructors yet"
 instantiateLet isrec defs body heap env = error "Can't instantiate let(rec)s yet"
 
-
--- TODO
 showResults :: [TIState] -> String
-showResults states = ""
+showResults states = iDisplay (iConcat [iLayn (map showState states), showStats (last states)] :: ISeqRep)
+
+showState :: (ISeq b) => (Show b) => TIState -> b
+showState (stack, dump, heap, globals, stats) = iConcat [ showStack heap stack, iNewline ]
+
+printState :: TIState -> String
+printState state = iDisplay (showState state :: ISeqRep)
+
+showStack :: (ISeq b) => (Show b) => TIHeap -> TIStack -> b
+showStack heap stack = iConcat [ iStr "Stk [", iIndent (iInterleave iNewline (map show_stack_item stack)), iStr " ]"]
+    where
+        show_stack_item addr = iConcat [ showFWAddr addr, iStr ": ", showStkNode heap (hLookup heap addr)]
+
+showStkNode :: (ISeq b) => (Show b) => TIHeap -> Node -> b
+showStkNode heap (NAp fun_addr arg_addr) = iConcat [ iStr "NAp ", showFWAddr fun_addr, iStr " ", showFWAddr arg_addr, iStr " (", showNode (hLookup heap arg_addr), iStr ")" ]
+showStkNode heap node = showNode node
+
+showNode :: (ISeq b) => (Show b) => Node -> b
+showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark1.showAddr a1, iStr " ", Mark1.showAddr a2 ]
+showNode (NSupercomb name args body) = iStr ("NSupercomb " ++ name)
+showNode (NNum n) = iStr "NNum " `iAppend` iNum n
+
+showAddr :: (ISeq b) => Addr -> b
+showAddr addr = iStr (show addr)
+
+showFWAddr :: (ISeq b) => Addr -> b
+showFWAddr addr = iStr (replicate (4 - length str) ' ' ++ str)
+    where
+        str = show addr
+
+showStats :: (ISeq b) => (Show b) => TIState -> b
+showStats (stack, dump, heap, globals, stats) = iConcat [ iNewline, iNewline, iStr "Total number of steps = ", iNum (tiStatGetSteps stats) ]
