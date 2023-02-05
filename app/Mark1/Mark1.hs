@@ -95,6 +95,7 @@ apStep :: TIState -> Addr -> Addr -> TIState
 apStep (stack, dump, heap, globals, stats) a1 a2 = (a1 : stack, dump, heap, globals, stats)
 
 scStep :: TIState -> Name -> [Name] -> CoreExpr -> TIState
+scStep (stack, _, _, _, _) sc_name arg_names _ | length stack < length arg_names + 1 = error ("Too few arguments for supercombinator " ++ sc_name ++ "!")
 scStep (stack, dump, heap, globals, stats) sc_name arg_names body = (new_stack, dump, new_heap, globals, stats)
     where
         new_stack = result_addr : drop (length arg_names + 1) stack
