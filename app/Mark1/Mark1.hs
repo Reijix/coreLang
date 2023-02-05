@@ -2,10 +2,14 @@ module Mark1 where
 
 import Syntax
 import Parser ( parse )
-import Heap ( Addr, Heap, hInitial, hAlloc, hLookup, hAddresses )
+import Heap ( Addr, Heap, hInitial, hAlloc, hLookup, hAddresses, heapStatsNumAllocs, heapStatsNumUpdates, heapStatsNumFrees )
 import Assoc ( Assoc, aLookup )
 import TIStats
-    ( TIStats, tiStatInitial, tiStatIncSteps, tiStatGetSteps )
+    ( tiStatGetSteps,
+      tiStatInitial,
+      tiStatIncSteps,
+      TIStats,
+      tiStatIncScReductions, tiStatIncCurStackDepth, tiStatDecCurStackDepth, tiStatGetScReductions, tiStatGetPrimitiveReductions, tiStatGetMaxStackDepth )
 import UsefulFuns ( mapAccuml )
 import ISeq
 import GHC.IO.Handle (hLookAhead)
@@ -92,16 +96,17 @@ numStep :: TIState -> Int -> TIState
 numStep state n = error "Number applied as function!"
 
 apStep :: TIState -> Addr -> Addr -> TIState
-apStep (stack, dump, heap, globals, stats) a1 a2 = (a1 : stack, dump, heap, globals, stats)
+apStep (stack, dump, heap, globals, stats) a1 a2 = (a1 : stack, dump, heap, globals, tiStatIncCurStackDepth stats)
 
 scStep :: TIState -> Name -> [Name] -> CoreExpr -> TIState
 scStep (stack, _, _, _, _) sc_name arg_names _ | length stack < length arg_names + 1 = error ("Too few arguments for supercombinator " ++ sc_name ++ "!")
-scStep (stack, dump, heap, globals, stats) sc_name arg_names body = (new_stack, dump, new_heap, globals, stats)
+scStep (stack, dump, heap, globals, stats) sc_name arg_names body = (new_stack, dump, new_heap, globals, new_stats)
     where
         new_stack = result_addr : drop (length arg_names + 1) stack
         (new_heap, result_addr) = instantiate body heap env
         env = arg_bindings ++ globals
         arg_bindings = zip arg_names (getArgs heap stack)
+        new_stats = tiStatDecCurStackDepth (length arg_names + 1) (tiStatIncScReductions stats)
 
 getArgs :: TIHeap -> TIStack -> [Addr]
 getArgs heap (sc:stack) = map get_arg stack
@@ -161,4 +166,12 @@ showFWAddr addr = iStr (replicate (4 - length str) ' ' ++ str)
         str = show addr
 
 showStats :: TIState -> ISeq
-showStats (stack, dump, heap, globals, stats) = iConcat [ iNewline, iNewline, iStr "Total number of steps = ", iNum (tiStatGetSteps stats) ]
+showStats (stack, dump, heap, globals, stats) 
+    = iConcat [ iNewline, iNewline, 
+                iStr "Total number of steps = ", iNum (tiStatGetSteps stats), iNewline,
+                iStr "Number of scReductions = ", iNum (tiStatGetScReductions stats), iNewline,
+                iStr "Number of primitive reductions = ", iNum (tiStatGetPrimitiveReductions stats), iNewline,
+                iStr "Maximum stack depth = ", iNum (tiStatGetMaxStackDepth stats), iNewline,
+                iStr "Number of heap allocations = ", iNum (heapStatsNumAllocs heap), iNewline,
+                iStr "Number of heap updates = ", iNum (heapStatsNumUpdates heap), iNewline,
+                iStr "Number of heap frees = ", iNum (heapStatsNumFrees heap) ]
