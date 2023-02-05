@@ -7,7 +7,7 @@ I am implementing the Core Language by Simon Peyton Jones and David Lester throu
 - [X] Pretty Printer
 - [X] Compiler frontend (callable program ./coreLang <inputfile> [cmdline options]
 - [ ] Template instantiation (chapter 2)
-  - [X] Mark 1: Minimal template instantation graph reducer
+  - [X] Mark 1: Minimal template instantiation graph reducer
   - [ ] Mark 2: Adding let(rec)
   - [ ] Mark 3: Adding updating
   - [ ] Mark 4: Adding arithmetic
