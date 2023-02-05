@@ -1,12 +1,13 @@
 module Mark1 where
 
 import Syntax
-import Parser
-import Heap
-import Assoc
+import Parser ( parse )
+import Heap ( Addr, Heap, hInitial, hAlloc, hLookup )
+import Assoc ( Assoc, aLookup )
 import TIStats
-import UsefulFuns
-import PrettyPrint
+    ( TIStats, tiStatInitial, tiStatIncSteps, tiStatGetSteps )
+import UsefulFuns ( mapAccuml )
+import ISeq
 import GHC.IO.Handle (hLookAhead)
 
 -------- TIState definition
@@ -123,35 +124,35 @@ instantiateConstr tag arity heap env = error "Can't instantiate constructors yet
 instantiateLet isrec defs body heap env = error "Can't instantiate let(rec)s yet"
 
 showResults :: [TIState] -> String
-showResults states = iDisplay (iConcat [iLayn (map showState states), showStats (last states)] :: ISeqRep)
+showResults states = iDisplay (iConcat [iLayn (map showState states), showStats (last states)])
 
-showState :: (ISeq b) => (Show b) => TIState -> b
+showState :: TIState -> ISeq
 showState (stack, dump, heap, globals, stats) = iConcat [ showStack heap stack, iNewline ]
 
 printState :: TIState -> String
-printState state = iDisplay (showState state :: ISeqRep)
+printState state = iDisplay (showState state)
 
-showStack :: (ISeq b) => (Show b) => TIHeap -> TIStack -> b
+showStack :: TIHeap -> TIStack -> ISeq
 showStack heap stack = iConcat [ iStr "Stk [", iIndent (iInterleave iNewline (map show_stack_item stack)), iStr " ]"]
     where
         show_stack_item addr = iConcat [ showFWAddr addr, iStr ": ", showStkNode heap (hLookup heap addr)]
 
-showStkNode :: (ISeq b) => (Show b) => TIHeap -> Node -> b
+showStkNode :: TIHeap -> Node -> ISeq
 showStkNode heap (NAp fun_addr arg_addr) = iConcat [ iStr "NAp ", showFWAddr fun_addr, iStr " ", showFWAddr arg_addr, iStr " (", showNode (hLookup heap arg_addr), iStr ")" ]
 showStkNode heap node = showNode node
 
-showNode :: (ISeq b) => (Show b) => Node -> b
+showNode :: Node -> ISeq
 showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark1.showAddr a1, iStr " ", Mark1.showAddr a2 ]
 showNode (NSupercomb name args body) = iStr ("NSupercomb " ++ name)
 showNode (NNum n) = iStr "NNum " `iAppend` iNum n
 
-showAddr :: (ISeq b) => Addr -> b
+showAddr :: Addr -> ISeq
 showAddr addr = iStr (show addr)
 
-showFWAddr :: (ISeq b) => Addr -> b
+showFWAddr :: Addr -> ISeq
 showFWAddr addr = iStr (replicate (4 - length str) ' ' ++ str)
     where
         str = show addr
 
-showStats :: (ISeq b) => (Show b) => TIState -> b
+showStats :: TIState -> ISeq
 showStats (stack, dump, heap, globals, stats) = iConcat [ iNewline, iNewline, iStr "Total number of steps = ", iNum (tiStatGetSteps stats) ]

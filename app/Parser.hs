@@ -1,9 +1,7 @@
 module Parser where
 
 import Data.Char (isDigit, isLetter, isSpace)
-import PrettyPrint
 import Syntax
-import System.IO
 import Prelude hiding (lex, (<*>))
 
 -- linenumber, text

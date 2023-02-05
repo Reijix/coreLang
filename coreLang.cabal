@@ -32,7 +32,8 @@ executable coreLang
                       Heap,
                       Mark1,
                       TIStats,
-                      UsefulFuns
+                      UsefulFuns,
+                      ISeq
     hs-source-dirs:   app,
                       app/utils,
                       app/Mark1

@@ -3,9 +3,27 @@ module Main where
 import Data.List (genericTake)
 import Data.Semigroup ((<>))
 import Options.Applicative
+    ( (<**>),
+      argument,
+      fullDesc,
+      header,
+      help,
+      info,
+      metavar,
+      progDesc,
+      short,
+      showDefault,
+      str,
+      strOption,
+      switch,
+      value,
+      execParser,
+      helper,
+      Parser )
 import Parser (parse)
-import PrettyPrint (iDisplay, prettyProgram)
-import System.IO
+import PrettyPrint (pprProgram)
+import ISeq (iDisplay)
+import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
 
 data CmdOption = CmdOption
   { sourceFile :: String,
@@ -62,5 +80,5 @@ run (CmdOption sourceFile _ True) = do
 
   let parsed = parse sourceText
   case parsed of
-    Left prog -> putStrLn . iDisplay . prettyProgram $ prog
+    Left prog -> putStrLn . iDisplay . pprProgram $ prog
     Right err -> putStrLn err
