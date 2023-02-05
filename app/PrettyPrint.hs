@@ -94,6 +94,20 @@ iConcat = foldl iAppend iNil
 iInterleave :: (ISeq b) => (Show b) => b -> [b] -> b
 iInterleave x xs = iConcat (intersperse x xs)
 
+iNum :: (ISeq b) => Int -> b
+iNum n = iStr (show n)
+
+iFWNum :: (ISeq b) => Int -> Int -> b
+iFWNum width n = iStr (replicate (width - length digits) ' ' ++ digits)
+  where
+    digits = show n
+
+iLayn :: (ISeq b) => (Show b) => [b] -> b
+iLayn seqs = iConcat (zipWith (curry lay_item) [1..] seqs)
+  where
+    lay_item (n, seq) = iConcat [ iFWNum 4 n, iStr ") ", iIndent seq, iNewline ]
+
+
 -- IMPLEMENTATION:
 data ISeqRep
   = INil
