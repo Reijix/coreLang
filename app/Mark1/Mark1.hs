@@ -129,9 +129,6 @@ showResults states = iDisplay (iConcat [iLayn (map showState states), showStats 
 showState :: TIState -> ISeq
 showState (stack, dump, heap, globals, stats) = iConcat [ showStack heap stack, iNewline ]
 
-printState :: TIState -> String
-printState state = iDisplay (showState state)
-
 showStack :: TIHeap -> TIStack -> ISeq
 showStack heap stack = iConcat [ iStr "Stk [", iIndent (iInterleave iNewline (map show_stack_item stack)), iStr " ]"]
     where
