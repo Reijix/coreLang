@@ -1,4 +1,4 @@
-module Mark1 where
+module Mark2 where
 
 import Syntax
 import Parser ( parse )
@@ -21,7 +21,7 @@ type TIState = (TIStack, TIDump, TIHeap, TIGlobals, TIStats)
 -- the spine stack, a stack of head addresses
 type TIStack = [Addr]
 
--- Dump is not used in mark1, so its just a dummy
+-- Dump is not used in mark, so its just a dummy
 data TIDump = DummyTIDump
     deriving (Show)
 initialTIDump :: TIDump
@@ -165,7 +165,7 @@ showStkNode heap (NAp fun_addr arg_addr) = iConcat [ iStr "NAp ", showFWAddr fun
 showStkNode heap node = showNode node
 
 showNode :: Node -> ISeq
-showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark1.showAddr a1, iStr " ", Mark1.showAddr a2 ]
+showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark2.showAddr a1, iStr " ", Mark2.showAddr a2 ]
 showNode (NSupercomb name args body) = iStr ("NSupercomb " ++ name)
 showNode (NNum n) = iStr "NNum " `iAppend` iNum n
 
