@@ -25,11 +25,14 @@ import PrettyPrint (pprProgram)
 import ISeq (iDisplay)
 import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
 import Mark1
+import Mark2
+import Mark3
 
 data CmdOption = CmdOption
   { sourceFile :: String,
     destinationFile :: String,
-    prettyPrint :: Bool
+    prettyPrint :: Bool,
+    backend :: String
   }
 
 cmdOption :: Parser CmdOption
@@ -51,6 +54,13 @@ cmdOption =
           <> help "PrettyPrint the parsed program"
           <> showDefault
       )
+    <*> strOption
+      ( short 'b'
+        <> metavar "<backend>"
+        <> help "Compile using <backend>\nSupported backend: [Mark1, Mark2, Mark3]"
+        <> showDefault
+        <> value "Mark3"
+      )
 
 main :: IO ()
 main = Main.run =<< execParser opts
@@ -64,23 +74,28 @@ main = Main.run =<< execParser opts
         )
 
 run :: CmdOption -> IO ()
--- no ppr
-run (CmdOption sourceFile _ False) = do
+-- only lex and parse
+run (CmdOption sourceFile _ ppr backend) = do
+  -- read sourceFile
   source <- openFile sourceFile ReadMode
   sourceText <- hGetContents source
 
-  putStrLn $ Mark1.run sourceText
-  --let parsed = parse sourceText
-  --case parsed of
-  --  Left prog -> print prog
-  --  Right err -> putStrLn err
-
--- do ppr
-run (CmdOption sourceFile _ True) = do
-  source <- openFile sourceFile ReadMode
-  sourceText <- hGetContents source
-
+  -- do lex and parse
   let parsed = parse sourceText
-  case parsed of
-    Left prog -> putStrLn . iDisplay . pprProgram $ prog
-    Right err -> putStrLn err
+  let prog = case parsed of
+            Left prog -> prog
+            Right err -> error err
+
+  -- optionally prettyprint
+  case ppr of
+    True -> putStrLn . iDisplay . pprProgram $ prog
+    False -> return ()
+  
+  -- compile, eval, showResults
+  case backend of 
+    "Mark1" -> putStrLn (Mark1.run prog)
+    "Mark2" -> putStrLn (Mark2.run prog)
+    "Mark3" -> putStrLn (Mark3.run prog)
+    "Mark4" -> error "Mark4 not implemented yet"
+    "Mark5" -> error "Mark5 not implemented yet"
+    _ -> error "Backend doesn't exist!"

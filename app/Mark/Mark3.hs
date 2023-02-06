@@ -1,8 +1,8 @@
-module Mark1 where
+module Mark3 where
 
 import Syntax
 import Parser ( parse )
-import Heap ( Addr, Heap, hInitial, hAlloc, hLookup, hAddresses, heapStatsNumAllocs, heapStatsNumUpdates, heapStatsNumFrees )
+import Heap ( Addr, Heap, hInitial, hAlloc, hLookup, hUpdate, hAddresses, heapStatsNumAllocs, heapStatsNumUpdates, heapStatsNumFrees )
 import Assoc ( Assoc, aLookup )
 import TIStats
     ( tiStatGetSteps,
@@ -21,7 +21,7 @@ type TIState = (TIStack, TIDump, TIHeap, TIGlobals, TIStats)
 -- the spine stack, a stack of head addresses
 type TIStack = [Addr]
 
--- Dump is not used in mark1, so its just a dummy
+-- Dump is not used in mark, so its just a dummy
 data TIDump = DummyTIDump
     deriving (Show)
 initialTIDump :: TIDump
@@ -31,6 +31,7 @@ type TIHeap = Heap Node
 data Node = NAp Addr Addr
           | NSupercomb Name [Name] CoreExpr
           | NNum Int
+          | NInd Addr
     deriving (Show)
 
 -- TIGlobals associates each supercombinator with the address of a heap node containing its definition
@@ -87,6 +88,7 @@ step state = dispatch (hLookup heap (head stack))
         dispatch (NNum n) = numStep state n
         dispatch (NAp a1 a2) = apStep state a1 a2
         dispatch (NSupercomb sc args body) = scStep state sc args body
+        dispatch (NInd addr) = indStep state addr
 
 numStep :: TIState -> Int -> TIState
 numStep state n = error "Number applied as function!"
@@ -95,14 +97,23 @@ apStep :: TIState -> Addr -> Addr -> TIState
 apStep (stack, dump, heap, globals, stats) a1 a2 = (a1 : stack, dump, heap, globals, tiStatIncCurStackDepth stats)
 
 scStep :: TIState -> Name -> [Name] -> CoreExpr -> TIState
-scStep (stack, _, _, _, _) sc_name arg_names _ | length stack < length arg_names + 1 = error ("Too few arguments for supercombinator " ++ sc_name ++ "!")
-scStep (stack, dump, heap, globals, stats) sc_name arg_names body = (new_stack, dump, new_heap, globals, new_stats)
+scStep (stack, _, _, _, _) sc_name arg_names _ | length stack < length arg_names + 1 
+    = error ("Too few arguments for supercombinator " ++ sc_name ++ "!")
+scStep (stack, dump, heap, globals, stats) sc_name arg_names body 
+    = (new_stack, dump, new_heap, globals, new_stats)
     where
-        new_stack = result_addr : drop (length arg_names + 1) stack
-        (new_heap, result_addr) = instantiate body heap env
+        new_stack = drop (length arg_names) stack
+        root_redex = head new_stack
+        new_heap = instantiateAndUpdate body root_redex heap env
         env = arg_bindings ++ globals
         arg_bindings = zip arg_names (getArgs heap stack)
         new_stats = tiStatDecCurStackDepth (length arg_names + 1) (tiStatIncScReductions stats)
+
+indStep :: TIState -> Addr -> TIState
+indStep ((ind_node_addr : rest_stack), dump, heap, global, stats) addr
+    = (new_stack, dump, heap, global, stats)
+    where
+        new_stack = addr : rest_stack
 
 getArgs :: TIHeap -> TIStack -> [Addr]
 getArgs heap (sc:stack) = map get_arg stack
@@ -110,6 +121,23 @@ getArgs heap (sc:stack) = map get_arg stack
         get_arg addr = arg 
             where
                 (NAp fun arg) = hLookup heap addr
+
+instantiateAndUpdate :: CoreExpr -> Addr -> TIHeap -> Assoc Name Addr -> TIHeap
+instantiateAndUpdate (ENum n) upd_addr heap env = hUpdate heap upd_addr (NNum n)
+instantiateAndUpdate (EAp e1 e2) upd_addr heap env
+    = hUpdate heap2 upd_addr (NAp a1 a2)
+        where
+            (heap1, a1) = instantiate e1 heap env
+            (heap2, a2) = instantiate e2 heap1 env
+instantiateAndUpdate (EVar v) upd_addr heap env = hUpdate heap upd_addr (hLookup heap (aLookup env v (error ("Undefined name " ++ show v))))
+instantiateAndUpdate (EConstr tag arity) upd_addr heap env = instantiateConstr tag arity heap env
+instantiateAndUpdate (ELet isrec defs body) upd_addr heap env = instantiateAndUpdate body upd_addr new_heap new_env
+    where
+        (new_heap, new_env) = foldr instantiateDef (heap, env) defs
+        instantiateDef (name, expr) (heap, env) = (new_heap, (name, addr):env)
+            where
+                (new_heap, addr) = instantiate expr heap new_env
+instantiateAndUpdate (ECase e alts) upd_addr heap env = fst (instantiate (ECase e alts) heap env)
 
 instantiate :: CoreExpr -> TIHeap -> Assoc Name Addr -> (TIHeap, Addr)
 instantiate (ENum n) heap env = hAlloc heap (NNum n)
@@ -120,10 +148,22 @@ instantiate (EAp e1 e2) heap env = hAlloc heap2 (NAp a1 a2)
 instantiate (EVar v) heap env = (heap, aLookup env v (error ("Undefined name " ++ show v)))
 instantiate (EConstr tag arity) heap env = instantiateConstr tag arity heap env
 instantiate (ELet isrec defs body) heap env = instantiateLet isrec defs body heap env
-instantiate (ECase e alts) heap env = error "Mark 1 can't instantiate case exprs!"
+instantiate (ECase e alts) heap env = error "Mark 3 can't instantiate case exprs!"
 
-instantiateConstr tag arity heap env = error "Mark 1 can't instantiate constructors!"
-instantiateLet isrec defs body heap env = error "Mark 1 can't instantiate let(rec)s!"
+instantiateConstr tag arity heap env = error "Mark 3 can't instantiate constructors!"
+instantiateLet False defs body heap env = instantiate body new_heap new_env
+    where
+        (new_heap, new_env) = foldr instantiateDef (heap, env) defs
+        instantiateDef (name, expr) (heap, env) = (new_heap, (name, addr):env)
+            where
+                (new_heap, addr) = instantiate expr heap env
+
+instantiateLet True defs body heap env = instantiate body new_heap new_env
+    where
+        (new_heap, new_env) = foldr instantiateDef (heap, env) defs
+        instantiateDef (name, expr) (heap, env) = (new_heap, (name, addr):env)
+            where
+                (new_heap, addr) = instantiate expr heap new_env
 
 showResults :: [TIState] -> String
 showResults states = iDisplay (iConcat [iLayn (map showState states), showStats (last states)])
@@ -149,9 +189,10 @@ showStkNode heap (NAp fun_addr arg_addr) = iConcat [ iStr "NAp ", showFWAddr fun
 showStkNode heap node = showNode node
 
 showNode :: Node -> ISeq
-showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark1.showAddr a1, iStr " ", Mark1.showAddr a2 ]
+showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark3.showAddr a1, iStr " ", Mark3.showAddr a2 ]
 showNode (NSupercomb name args body) = iStr ("NSupercomb " ++ name)
 showNode (NNum n) = iStr "NNum " `iAppend` iNum n
+showNode (NInd addr) = iStr "NNum" `iAppend` showAddr addr
 
 showAddr :: Addr -> ISeq
 showAddr addr = iStr (show addr)
