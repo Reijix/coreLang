@@ -43,12 +43,8 @@ applyToStats stats_fun (stack, dump, heap, sc_defs, stats) = (stack, dump, heap,
 
 
 --------- actual compiler
-run :: String -> String
-run input = showResults . eval . compile $ fromLeft (parse input)
-
-fromLeft :: Either CoreProgram String -> CoreProgram
-fromLeft (Left prog) = prog
-fromLeft (Right msg) = error msg  
+run :: CoreProgram -> String
+run = showResults . eval . compile
 
 compile :: CoreProgram -> TIState
 compile program = (initial_stack, initialTIDump, initial_heap, globals, tiStatInitial)
@@ -118,12 +114,7 @@ indStep :: TIState -> Addr -> TIState
 indStep ((ind_node_addr : rest_stack), dump, heap, global, stats) addr
     = (new_stack, dump, heap, global, stats)
     where
-        ind_node = hLookup heap ind_node_addr
-        new_stack = (get_addr ind_node) : rest_stack
-            where
-                get_addr (NInd addr) = addr
-                get_addr _ = error "No indirection node!!"
-indStep ([], _, _, _, _) _ = error "Indirection without stack??"
+        new_stack = addr : rest_stack
 
 getArgs :: TIHeap -> TIStack -> [Addr]
 getArgs heap (sc:stack) = map get_arg stack
@@ -141,9 +132,9 @@ instantiate (EAp e1 e2) heap env = hAlloc heap2 (NAp a1 a2)
 instantiate (EVar v) heap env = (heap, aLookup env v (error ("Undefined name " ++ show v)))
 instantiate (EConstr tag arity) heap env = instantiateConstr tag arity heap env
 instantiate (ELet isrec defs body) heap env = instantiateLet isrec defs body heap env
-instantiate (ECase e alts) heap env = error "Can't instantiate case exprs"
+instantiate (ECase e alts) heap env = error "Mark 3 can't instantiate case exprs!"
 
-instantiateConstr tag arity heap env = error "Can't instantiate constructors yet"
+instantiateConstr tag arity heap env = error "Mark 3 can't instantiate constructors!"
 instantiateLet False defs body heap env = instantiate body new_heap new_env
     where
         (new_heap, new_env) = foldr instantiateDef (heap, env) defs
