@@ -24,7 +24,7 @@ import Parser (parse)
 import PrettyPrint (pprProgram)
 import ISeq (iDisplay)
 import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
-import Mark1
+import Mark3
 
 data CmdOption = CmdOption
   { sourceFile :: String,
@@ -69,7 +69,7 @@ run (CmdOption sourceFile _ False) = do
   source <- openFile sourceFile ReadMode
   sourceText <- hGetContents source
 
-  putStrLn $ Mark1.run sourceText
+  putStrLn $ Mark3.run sourceText
   --let parsed = parse sourceText
   --case parsed of
   --  Left prog -> print prog

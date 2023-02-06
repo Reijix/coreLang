@@ -29,6 +29,7 @@ executable coreLang
                       Heap,
                       Mark1,
                       Mark2,
+                      Mark3,
                       TIStats,
                       UsefulFuns,
                       ISeq
