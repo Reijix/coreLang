@@ -102,13 +102,12 @@ scStep (stack, _, _, _, _) sc_name arg_names _ | length stack < length arg_names
 scStep (stack, dump, heap, globals, stats) sc_name arg_names body 
     = (new_stack, dump, new_heap, globals, new_stats)
     where
-        new_stack = result_addr : drop (length arg_names + 1) stack
-        (new_heap, result_addr) = instantiate body heap env
+        new_stack = drop (length arg_names) stack
+        root_redex = head new_stack
+        new_heap = instantiateAndUpdate body root_redex heap env
         env = arg_bindings ++ globals
         arg_bindings = zip arg_names (getArgs heap stack)
         new_stats = tiStatDecCurStackDepth (length arg_names + 1) (tiStatIncScReductions stats)
-        -- add indirection to heap
-        new_new_heap = hUpdate new_heap result_addr
 
 indStep :: TIState -> Addr -> TIState
 indStep ((ind_node_addr : rest_stack), dump, heap, global, stats) addr
@@ -122,6 +121,23 @@ getArgs heap (sc:stack) = map get_arg stack
         get_arg addr = arg 
             where
                 (NAp fun arg) = hLookup heap addr
+
+instantiateAndUpdate :: CoreExpr -> Addr -> TIHeap -> Assoc Name Addr -> TIHeap
+instantiateAndUpdate (ENum n) upd_addr heap env = hUpdate heap upd_addr (NNum n)
+instantiateAndUpdate (EAp e1 e2) upd_addr heap env
+    = hUpdate heap2 upd_addr (NAp a1 a2)
+        where
+            (heap1, a1) = instantiate e1 heap env
+            (heap2, a2) = instantiate e2 heap1 env
+instantiateAndUpdate (EVar v) upd_addr heap env = hUpdate heap upd_addr (hLookup heap (aLookup env v (error ("Undefined name " ++ show v))))
+instantiateAndUpdate (EConstr tag arity) upd_addr heap env = instantiateConstr tag arity heap env
+instantiateAndUpdate (ELet isrec defs body) upd_addr heap env = instantiateAndUpdate body upd_addr new_heap new_env
+    where
+        (new_heap, new_env) = foldr instantiateDef (heap, env) defs
+        instantiateDef (name, expr) (heap, env) = (new_heap, (name, addr):env)
+            where
+                (new_heap, addr) = instantiate expr heap new_env
+instantiateAndUpdate (ECase e alts) upd_addr heap env = fst (instantiate (ECase e alts) heap env)
 
 instantiate :: CoreExpr -> TIHeap -> Assoc Name Addr -> (TIHeap, Addr)
 instantiate (ENum n) heap env = hAlloc heap (NNum n)
@@ -176,6 +192,7 @@ showNode :: Node -> ISeq
 showNode (NAp a1 a2) = iConcat [ iStr "NAp ", Mark3.showAddr a1, iStr " ", Mark3.showAddr a2 ]
 showNode (NSupercomb name args body) = iStr ("NSupercomb " ++ name)
 showNode (NNum n) = iStr "NNum " `iAppend` iNum n
+showNode (NInd addr) = iStr "NNum" `iAppend` showAddr addr
 
 showAddr :: Addr -> ISeq
 showAddr addr = iStr (show addr)

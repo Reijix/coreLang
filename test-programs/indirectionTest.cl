@@ -1,2 +1,4 @@
 id x = x;
-main = twice twice id 3
+main = let
+         num = twice id 3
+       in id num
