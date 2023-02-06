@@ -17,10 +17,6 @@ data Expr a
   | ELam [a] (Expr a)
   deriving (Show, Eq)
 
-data IsRec
-  = Recursive
-  | NonRecursive
-
 type CoreExpr = Expr Name
 
 type Alter a = (Int, [a], Expr a)

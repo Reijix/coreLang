@@ -24,6 +24,7 @@ import Parser (parse)
 import PrettyPrint (pprProgram)
 import ISeq (iDisplay)
 import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
+import Mark1
 
 data CmdOption = CmdOption
   { sourceFile :: String,
@@ -52,7 +53,7 @@ cmdOption =
       )
 
 main :: IO ()
-main = run =<< execParser opts
+main = Main.run =<< execParser opts
   where
     opts =
       info
@@ -68,10 +69,11 @@ run (CmdOption sourceFile _ False) = do
   source <- openFile sourceFile ReadMode
   sourceText <- hGetContents source
 
-  let parsed = parse sourceText
-  case parsed of
-    Left prog -> print prog
-    Right err -> putStrLn err
+  putStrLn $ Mark1.run sourceText
+  --let parsed = parse sourceText
+  --case parsed of
+  --  Left prog -> print prog
+  --  Right err -> putStrLn err
 
 -- do ppr
 run (CmdOption sourceFile _ True) = do
