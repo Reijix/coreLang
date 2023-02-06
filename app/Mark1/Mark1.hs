@@ -127,7 +127,19 @@ instantiate (ELet isrec defs body) heap env = instantiateLet isrec defs body hea
 instantiate (ECase e alts) heap env = error "Can't instantiate case exprs"
 
 instantiateConstr tag arity heap env = error "Can't instantiate constructors yet"
-instantiateLet isrec defs body heap env = error "Can't instantiate let(rec)s yet"
+instantiateLet False defs body heap env = instantiate body new_heap new_env
+    where
+        (new_heap, new_env) = foldr instantiateDef (heap, env) defs
+        instantiateDef (name, expr) (heap, env) = (new_heap, (name, addr):env)
+            where
+                (new_heap, addr) = instantiate expr heap env
+
+instantiateLet True defs body heap env = instantiate body new_heap new_env
+    where
+        (new_heap, new_env) = foldr instantiateDef (heap, env) defs
+        instantiateDef (name, expr) (heap, env) = (new_heap, (name, addr):env)
+            where
+                (new_heap, addr) = instantiate expr heap new_env
 
 showResults :: [TIState] -> String
 showResults states = iDisplay (iConcat [iLayn (map showState states), showStats (last states)])
