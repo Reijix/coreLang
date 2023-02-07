@@ -1,1 +1,0 @@
-main = negate 3

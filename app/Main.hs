@@ -61,7 +61,7 @@ cmdOption =
         <> metavar "<backend>"
         <> help "Compile using <backend>\nSupported backend: [Mark1, Mark2, Mark3]"
         <> showDefault
-        <> value "Mark3"
+        <> value "Mark4"
       )
 
 main :: IO ()
