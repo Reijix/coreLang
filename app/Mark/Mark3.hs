@@ -110,7 +110,7 @@ scStep (stack, dump, heap, globals, stats) sc_name arg_names body
         new_stats = tiStatDecCurStackDepth (length arg_names + 1) (tiStatIncScReductions stats)
 
 indStep :: TIState -> Addr -> TIState
-indStep ((ind_node_addr : rest_stack), dump, heap, global, stats) addr
+indStep (ind_node_addr : rest_stack, dump, heap, global, stats) addr
     = (new_stack, dump, heap, global, stats)
     where
         new_stack = addr : rest_stack
