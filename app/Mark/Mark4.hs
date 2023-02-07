@@ -12,7 +12,6 @@ import TIStats
       tiStatIncScReductions, tiStatIncCurStackDepth, tiStatDecCurStackDepth, tiStatGetScReductions, tiStatGetPrimitiveReductions, tiStatGetMaxStackDepth )
 import UsefulFuns ( mapAccuml )
 import ISeq
-import GHC.IO.Handle (hLookAhead)
 
 -------- TIState definition
 -- the state contains the elements below
@@ -136,6 +135,10 @@ indStep (ind_node_addr : rest_stack, dump, heap, global, stats) addr
 
 primStep :: TIState -> Primitive -> TIState
 primStep state Neg = primNeg state
+primStep state Add = primArith state (+)
+primStep state Sub = primArith state (-)
+primStep state Mul = primArith state (*)
+primStep state Div = primArith state div
 
 primNeg :: TIState -> TIState
 primNeg (stack, dump, heap, globals, stats) = getResult (isDataNode arg_node)
@@ -154,6 +157,29 @@ primNeg (stack, dump, heap, globals, stats) = getResult (isDataNode arg_node)
                 new_stack = [arg_addr]  -- stack whose only element is the arg to neg
                 -- TODO setStackDepth to 1 in stats!!
 
+primArith :: TIState -> (Int -> Int -> Int) -> TIState
+primArith (stack, dump, heap, globals, stats) fun = getResult (isDataNode a1_node) (isDataNode a2_node)
+    where
+        [a1_addr, a2_addr] = getArgs heap stack
+        a1_node = hLookup heap a1_addr
+        a2_node = hLookup heap a2_addr
+        getResult True True = (new_stack, dump, new_heap, globals, stats)
+            where
+                new_stack = drop 2 stack
+                root_redex = head new_stack
+                (NNum n1) = a1_node
+                (NNum n2) = a2_node
+                new_heap = hUpdate heap root_redex (NNum (fun n1 n2))
+        getResult False _ = (new_stack, new_dump, heap, globals, stats)
+            where
+                new_dump = stack : dump
+                new_stack = [a1_addr]
+                -- TODO setStackDepth to 1 in stats!!
+        getResult _ False = (new_stack, new_dump, heap, globals, stats)
+            where
+                new_dump = stack : dump
+                new_stack = [a2_addr]
+                -- TODO setStackDepth to 1 in stats!!
                 
 
 
