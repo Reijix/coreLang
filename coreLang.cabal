@@ -30,6 +30,7 @@ executable coreLang
                       Mark1,
                       Mark2,
                       Mark3,
+                      Mark4,
                       TIStats,
                       UsefulFuns,
                       ISeq

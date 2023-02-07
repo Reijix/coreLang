@@ -2,6 +2,7 @@ module Main where
 
 import Data.List (genericTake)
 import Data.Semigroup ((<>))
+import Control.Monad (when)
 import Options.Applicative
     ( (<**>),
       argument,
@@ -27,6 +28,7 @@ import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
 import Mark1
 import Mark2
 import Mark3
+import Mark4
 
 data CmdOption = CmdOption
   { sourceFile :: String,
@@ -87,15 +89,13 @@ run (CmdOption sourceFile _ ppr backend) = do
             Right err -> error err
 
   -- optionally prettyprint
-  case ppr of
-    True -> putStrLn . iDisplay . pprProgram $ prog
-    False -> return ()
+  when ppr $ putStrLn . iDisplay . pprProgram $ prog
   
   -- compile, eval, showResults
   case backend of 
     "Mark1" -> putStrLn (Mark1.run prog)
     "Mark2" -> putStrLn (Mark2.run prog)
     "Mark3" -> putStrLn (Mark3.run prog)
-    "Mark4" -> error "Mark4 not implemented yet"
+    "Mark4" -> putStrLn (Mark4.run prog)
     "Mark5" -> error "Mark5 not implemented yet"
     _ -> error "Backend doesn't exist!"
