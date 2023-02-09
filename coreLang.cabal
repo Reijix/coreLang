@@ -17,18 +17,32 @@ source-repository head
     type: git
     location: git://github.com/Reijix/coreLang.git
 
-library parser-lib
+library syntax-lib
     build-depends:    base >=4.14.0.0
-    exposed-modules:  Syntax,
-                      PrettyPrint,
-                      Parser,
-                      ISeq
+    exposed-modules:  Syntax
+    hs-source-dirs:   syntax
+    default-language: Haskell2010
+
+library parser-lib
+    build-depends:    base >=4.14.0.0,
+                      syntax-lib
+    exposed-modules:  Parser
     hs-source-dirs:   parser
+    default-language: Haskell2010
+
+library prettyprint-lib
+    build-depends:    base >=4.14.0.0,
+                      syntax-lib
+    exposed-modules:  PrettyPrint,
+                      ISeq
+    hs-source-dirs:   prettyprint
     default-language: Haskell2010
 
 library compiler-lib
     build-depends:    base >=4.14.0.0, 
-                      parser-lib
+                      parser-lib,
+                      prettyprint-lib,
+                      syntax-lib
     exposed-modules:  Assoc,
                       Heap,
                       Mark1,
@@ -47,7 +61,8 @@ executable coreLang
     build-depends:    base >=4.14.0.0,
                       optparse-applicative,
                       parser-lib,
-                      compiler-lib
+                      compiler-lib,
+                      prettyprint-lib
     hs-source-dirs:   app
     default-language: Haskell2010
 
@@ -62,4 +77,5 @@ test-suite mark4-tests
                    HUnit ^>=1.6,
                    parser-lib,
                    compiler-lib,
+                   prettyprint-lib
     default-language: Haskell2010
