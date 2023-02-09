@@ -1,16 +1,17 @@
-module Mark4Test where
+module Mark4Test (Mark4Test (Mark4Test)) where
 
+import TestUtils ( TestRunner(..), test_path, extractResult )
 import Test.HUnit
-import Main
-import Mark4
-import Parser
-import TestUtils
-import qualified System.Exit as Exit
+    ( assertEqual, Counts(failures, errors), Test(..), runTestTT )
+import Mark4 ( compile, eval )
 import Data.Either (fromLeft)
+import Parser (parse)
+import qualified System.Exit as Exit
+import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
 
--- source: https://functional.works-hub.com/learn/basic-unit-testing-in-haskell-using-hunit-and-cabal-29e47
 
-tests = 
+testPrograms :: [(String, Int)]
+testPrograms = 
  -- (<program>, <expected>)
     [
     ("negate.cl", -3),
@@ -20,19 +21,23 @@ tests =
     ("arithTest3.cl", -1)
     ]
 
+data Mark4Test = Mark4Test
+
+instance TestRunner Mark4Test where
+    runTest _ = do
+        -- build test list
+        tl <- mapM (\(file, expected) -> (do
+                                            source <- openFile (test_path ++ file) ReadMode
+                                            prog <- hGetContents source
+                                            return $ TestLabel file (doTest prog expected))
+                    ) testPrograms
+        -- run test list
+        result <- runTestTT (TestList tl)
+        -- check for success
+        if errors result > 0 || failures result > 0 then Exit.exitFailure else Exit.exitSuccess
 
 doTest :: String -> Int -> Test
-doTest file expected = TestCase (assertEqual ("should return " ++ show expected) expected (runProgram file))
+doTest prog expected = TestCase (assertEqual ("should return " ++ show expected) expected (runProgram prog))
 
 runProgram :: String -> Int
-runProgram file = extractResult $ Mark4.eval $ Mark4.compile $ fromLeft [] $ parse file
-
-testList :: Test
-testList = TestList tl
-    where
-        tl = map (\(prog, expected) -> TestLabel prog (doTest prog expected)) tests
-
-main :: IO ()
-main = do
-    result <- runTestTT testList
-    if failures result > 0 then Exit.exitFailure else Exit.exitSuccess
+runProgram prog = extractResult $ Mark4.eval $ Mark4.compile $ fromLeft (error "parser error") $ parse prog

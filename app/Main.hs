@@ -25,10 +25,10 @@ import Parser (parse)
 import PrettyPrint (pprProgram)
 import ISeq (iDisplay)
 import System.IO ( hGetContents, openFile, IOMode(ReadMode) )
-import Mark1
-import Mark2
-import Mark3
-import Mark4
+import Mark1 ( run )
+import Mark2 ( run )
+import Mark3 ( run )
+import Mark4 ( run )
 
 data CmdOption = CmdOption
   { sourceFile :: String,

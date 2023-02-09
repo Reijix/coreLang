@@ -17,10 +17,17 @@ source-repository head
     type: git
     location: git://github.com/Reijix/coreLang.git
 
+library parser-lib
+    build-depends:    base >=4.14.0.0
+    exposed-modules:  Syntax,
+                      PrettyPrint,
+                      Parser,
+                      ISeq
+    hs-source-dirs:   parser
+    default-language: Haskell2010
 
-library coreLang-lib
-    build-depends:    base >=4.14.0.0,
-                      optparse-applicative,
+library compiler-lib
+    build-depends:    base >=4.14.0.0, 
                       parser-lib
     exposed-modules:  Assoc,
                       Heap,
@@ -29,42 +36,9 @@ library coreLang-lib
                       Mark3,
                       Mark4,
                       TIStats,
-                      UsefulFuns,
-                      ISeq,
-                      Main,
-                      TestUtils
-    hs-source-dirs:   app,
-                      app/utils,
-                      app/Mark,
-                      tests
-    default-language: Haskell2010
-
-library parser-lib
-    build-depends:    base >=4.14.0.0
-    exposed-modules:  Syntax,
-                      PrettyPrint,
-                      Parser,
-                      ISeq
-    hs-source-dirs:   app
-    default-language: Haskell2010
-
-library compiler-lib
-    main-is:          Main.hs
-    build-depends:    base >=4.14.0.0
-    exposed-modules:    Syntax,
-                      PrettyPrint,
-                      Assoc,
-                      Heap,
-                      Mark1,
-                      Mark2,
-                      Mark3,
-                      Mark4,
-                      TIStats,
-                      UsefulFuns,
-                      ISeq
-    hs-source-dirs:   app,
-                      app/utils,
-                      app/Mark
+                      UsefulFuns
+    hs-source-dirs:   compiler/Mark,
+                      compiler/utils
     default-language: Haskell2010
 
 
@@ -79,9 +53,13 @@ executable coreLang
 
 test-suite mark4-tests
     type: exitcode-stdio-1.0
-    main-is: Mark4Test.hs
+    main-is: Main.hs
     other-modules:
-        TestUtils
+        TestUtils,
+        Mark4Test
     hs-source-dirs: tests
-    build-depends: base >=4.14.0.0, HUnit ^>=1.6, coreLang-lib
+    build-depends: base >=4.14.0.0,
+                   HUnit ^>=1.6,
+                   parser-lib,
+                   compiler-lib,
     default-language: Haskell2010
