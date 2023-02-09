@@ -10,5 +10,5 @@ I am implementing the Core Language by Simon Peyton Jones and David Lester throu
   - [X] Mark 1: Minimal template instantiation graph reducer
   - [X] Mark 2: Adding let(rec)
   - [X] Mark 3: Adding updating
-  - [ ] Mark 4: Adding arithmetic
+  - [X] Mark 4: Adding arithmetic
   - [ ] Mark 5: Structured data
