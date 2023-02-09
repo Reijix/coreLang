@@ -1,1 +1,0 @@
-main = negate (I 3)
