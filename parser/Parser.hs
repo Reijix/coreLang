@@ -190,3 +190,9 @@ syntax = take_first_parse . pProgram
 
 parse :: String -> Either CoreProgram String
 parse = syntax . lex 0
+
+parseStrict :: String -> CoreProgram
+parseStrict str = case parse str of
+  Left prog -> prog
+  Right err -> error err
+  
