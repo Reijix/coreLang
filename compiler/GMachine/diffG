@@ -1,0 +1,110 @@
+1c1
+< module G1 where
+---
+> module G2 where
+6,8c6,8
+< import Assoc ( Assoc, aLookup, aDomain )
+< import Control.Monad.State
+< import GHC.Base (RuntimeRep(AddrRep), VecElem (Int16ElemRep))
+---
+> import Assoc ( Assoc, aDomain, aLookup )
+> import Control.Monad.State.Strict
+>     ( gets, modify, evalState, MonadState(get), State )
+11d10
+< import Debug.Trace
+20c19,20
+<     | Slide Int
+---
+>     | Update Int
+>     | Pop Int deriving (Show)
+25a26
+>     | NInd Addr deriving (Show)
+86d86
+< dispatch (Slide n) = slide n
+87a88,89
+> dispatch (Update n) = update n
+> dispatch (Pop n) = pop n
+111d112
+< 
+121c122
+<     as <- getStack
+---
+>     stack <- getStack
+123,124c124,125
+<     let a = getArg (hLookup heap (as !! (num+1)))
+<     putStack $ a:as
+---
+>     let a = getArg (hLookup heap (stack !! (num+1)))
+>     putStack $ a:stack
+129,132d129
+< slide :: Int -> GMonad ()
+< slide num = do
+<     stack <- getStack
+<     putStack (head stack : drop num stack)
+143a141,155
+>         NInd a1 -> putStack (a1 : tail stack) >> putCode [Unwind]
+> update :: Int -> GMonad ()
+> update n = do
+>     stack <- getStack
+>     heap <- getHeap
+>     -- TODO indirection just doesn't get created...
+>     let heap' = hUpdate heap (stack !! (n + 1)) (NInd (head stack))
+>     let node = hLookup heap' (stack !! (n + 1))
+>     putHeap heap'
+>     putStack $ tail stack
+> 
+> pop :: Int -> GMonad ()
+> pop n = do
+>     stack <- getStack
+>     putStack (drop n stack)
+161c173,174
+<             trace ("state after step " ++ iDisplay (showState state)) $ return ()
+---
+>             stack <- getStack
+>             heap <- getHeap
+178,190c191,205
+<     where 
+<         compileR :: CoreExpr -> Assoc Name Int -> [Instruction]
+<         compileR e env = compileC e env ++ [Slide (length env + 1), Unwind]
+<         compileC :: CoreExpr -> Assoc Name Int -> [Instruction]
+<         compileC (EVar v) env = if v `elem` aDomain env
+<             then [Push (aLookup env v (error "cant happen"))]
+<             else [Pushglobal v]
+<         compileC (ENum n) env = [Pushint n]
+<         compileC (EAp e1 e2) env = compileC e2 env ++ compileC e1 (argOffset 1 env) ++ [Mkap]
+<             where
+<                 argOffset :: Int -> Assoc Name Int -> Assoc Name Int
+<                 argOffset n env = [(v, n+m) | (v, m) <- env]
+<         compileC _ _ = error "compileC invalid call"
+---
+> 
+> compileR :: CoreExpr -> Assoc Name Int -> [Instruction]
+> compileR e env = compileC e env ++ [Update n, Pop n, Unwind]
+>     where n = length env
+> 
+> compileC :: CoreExpr -> Assoc Name Int -> [Instruction]
+> compileC (EVar v) env = if v `elem` aDomain env
+>     then [Push (aLookup env v (error "cant happen"))]
+>     else [Pushglobal v]
+> compileC (ENum n) env = [Pushint n]
+> compileC (EAp e1 e2) env = compileC e2 env ++ compileC e1 (argOffset 1 env) ++ [Mkap]
+>     where
+>         argOffset :: Int -> Assoc Name Int -> Assoc Name Int
+>         argOffset n env = [(v, n+m) | (v, m) <- env]
+> compileC _ _ = error "compileC invalid call"
+209a225
+> showSC :: GState -> (String, Addr) -> ISeq
+214a231
+> showInstructions :: [Instruction] -> ISeq
+224c241,242
+< showInstruction (Slide n) = iStr "Slide " `iAppend` iNum n
+---
+> showInstruction (Update n) = iStr "Update " `iAppend` iNum n
+> showInstruction (Pop n) = iStr "Pop " `iAppend` iNum n
+233c251,252
+< showStackItem s a = iConcat [iStr (showAddr a), iStr ": ", showNode s a (hLookup (gHeap s) a)]
+---
+> showStackItem s a = iConcat [iStr (showAddr a), iStr ": ", showNode s a node]
+>     where node = hLookup (gHeap s) a
+240a260
+> showNode s a (NInd a1) = iConcat [iStr "Ind ", iStr (showAddr a1)]

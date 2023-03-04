@@ -43,7 +43,8 @@ library compiler-lib
                       parser-lib,
                       prettyprint-lib,
                       syntax-lib,
-                      mtl
+                      mtl,
+                      containers
     exposed-modules:  Assoc,
                       Heap,
                       Mark1,
@@ -52,20 +53,44 @@ library compiler-lib
                       Mark4,
                       TIStats,
                       UsefulFuns,
-                      G1
+                      G1,
+                      G2
     hs-source-dirs:   compiler/Mark,
                       compiler/utils,
                       compiler/GMachine
     default-language: Haskell2010
 
+library coreLib
+    exposed-modules:  Assoc,
+                      Heap,
+                      Heap2,
+                      Mark1,
+                      Mark2,
+                      Mark3,
+                      Mark4,
+                      TIStats,
+                      UsefulFuns,
+                      G1,
+                      G2,
+                      PrettyPrint,
+                      ISeq,
+                      Parser,
+                      Syntax
+    build-depends:    base, mtl, containers
+    hs-source-dirs:   compiler/Mark,
+                      compiler/utils,
+                      compiler/GMachine,
+                      app,
+                      prettyprint,
+                      parser,
+                      syntax
+    default-language: Haskell2010
 
 executable coreLang
     main-is:          Main.hs
     build-depends:    base,
                       optparse-applicative,
-                      parser-lib,
-                      compiler-lib,
-                      prettyprint-lib
+                      coreLib, containers
     hs-source-dirs:   app
     default-language: Haskell2010
 

@@ -1,11 +1,11 @@
-module G1 where
+module G2 where
 
 import Parser
 import Heap
 import Syntax
-import Assoc ( Assoc, aLookup, aDomain )
-import Control.Monad.State
-import GHC.Base (RuntimeRep(AddrRep), VecElem (Int16ElemRep))
+import Assoc ( Assoc, aDomain, aLookup )
+import Control.Monad.State.Strict
+    ( gets, modify, evalState, MonadState(get), State )
 import UsefulFuns (mapAccuml)
 import ISeq (iDisplay, iInterleave, iNewline, iLayn, iConcat, iStr, iIndent, ISeq, iAppend, iNum)
 
@@ -16,12 +16,14 @@ data Instruction
     | Pushint Int
     | Push Int
     | Mkap
-    | Slide Int
+    | Update Int
+    | Pop Int deriving (Show)
 
 data Node
     = NNum Int
     | NAp Addr Addr
     | NGlobal Int [Instruction]
+    | NInd Addr deriving (Show)
 
 data GState = GState {
     gCode :: [Instruction],
@@ -82,8 +84,9 @@ dispatch (Pushglobal f) = pushglobal f
 dispatch (Pushint n) = pushint n
 dispatch Mkap = mkap
 dispatch (Push n) = push n
-dispatch (Slide n) = slide n
 dispatch Unwind = unwind
+dispatch (Update n) = update n
+dispatch (Pop n) = pop n
 
 -- instructions
 pushglobal :: Name -> GMonad ()
@@ -107,7 +110,6 @@ pushint num = do
             putGlobals ((show num, a) : globals)
         else do
             putStack (a : stack)
-
 mkap :: GMonad ()
 mkap = do
     stack <- getStack
@@ -117,18 +119,14 @@ mkap = do
     putHeap heap'
 push :: Int -> GMonad ()
 push num = do
-    as <- getStack
+    stack <- getStack
     heap <- getHeap
-    let a = getArg (hLookup heap (as !! (num+1)))
-    putStack $ a:as
+    let a = getArg (hLookup heap (stack !! (num+1)))
+    putStack $ a:stack
     where
         getArg :: Node -> Addr
         getArg (NAp a1 a2) = a2
         getArg _ = error "getArg called on non application!"
-slide :: Int -> GMonad ()
-slide num = do
-    stack <- getStack
-    putStack (head stack : drop (num + 1) stack)
 unwind :: GMonad ()
 unwind = do
     heap <- getHeap
@@ -140,6 +138,21 @@ unwind = do
         NGlobal n c -> if length stack - 1 < n
                             then error "Unwinding with too few arguments!"
                             else putCode c
+        NInd a1 -> putStack (a1 : tail stack) >> putCode [Unwind]
+update :: Int -> GMonad ()
+update n = do
+    stack <- getStack
+    heap <- getHeap
+    -- TODO indirection just doesn't get created...
+    let heap' = hUpdate heap (stack !! (n + 1)) (NInd (head stack))
+    let node = hLookup heap' (stack !! (n + 1))
+    putHeap heap'
+    putStack $ tail stack
+
+pop :: Int -> GMonad ()
+pop n = do
+    stack <- getStack
+    putStack (drop n stack)
 
 -- runners
 run :: CoreProgram -> String
@@ -157,6 +170,8 @@ eval = reverse <$> evalHelper []
             doAdmin
             final <- gFinal
             state <- get
+            stack <- getStack
+            heap <- getHeap
             if final
                 then return $ state : states
                 else evalHelper (state : states)
@@ -173,19 +188,21 @@ allocateSc heap (name, nargs, instns) = (heap', (name, addr))
 
 compileSc :: (Name, [Name], CoreExpr) -> (Name, Int, [Instruction])
 compileSc (name, env, body) = (name, length env, compileR body (zip env [0..]))
-    where 
-        compileR :: CoreExpr -> Assoc Name Int -> [Instruction]
-        compileR e env = compileC e env ++ [Slide (length env + 1), Unwind]
-        compileC :: CoreExpr -> Assoc Name Int -> [Instruction]
-        compileC (EVar v) env = if v `elem` aDomain env
-            then [Push (aLookup env v (error "cant happen"))]
-            else [Pushglobal v]
-        compileC (ENum n) env = [Pushint n]
-        compileC (EAp e1 e2) env = compileC e2 env ++ compileC e1 (argOffset 1 env) ++ [Mkap]
-            where
-                argOffset :: Int -> Assoc Name Int -> Assoc Name Int
-                argOffset n env = [(v, n+m) | (v, m) <- env]
-        compileC _ _ = error "compileC invalid call"
+
+compileR :: CoreExpr -> Assoc Name Int -> [Instruction]
+compileR e env = compileC e env ++ [Update n, Pop n, Unwind]
+    where n = length env
+
+compileC :: CoreExpr -> Assoc Name Int -> [Instruction]
+compileC (EVar v) env = if v `elem` aDomain env
+    then [Push (aLookup env v (error "cant happen"))]
+    else [Pushglobal v]
+compileC (ENum n) env = [Pushint n]
+compileC (EAp e1 e2) env = compileC e2 env ++ compileC e1 (argOffset 1 env) ++ [Mkap]
+    where
+        argOffset :: Int -> Assoc Name Int -> Assoc Name Int
+        argOffset n env = [(v, n+m) | (v, m) <- env]
+compileC _ _ = error "compileC invalid call"
 
 
 
@@ -205,11 +222,13 @@ showResults states = iDisplay (iConcat [
     showStats (last states)])
     where (s:ss) = states
 
+showSC :: GState -> (String, Addr) -> ISeq
 showSC s (name, addr) = iConcat [ iStr "Code for ", iStr name, iNewline,
                                   showInstructions code, iNewline, iNewline]
     where
         (NGlobal arity code) = hLookup (gHeap s) addr
 
+showInstructions :: [Instruction] -> ISeq
 showInstructions is = iConcat [iStr "  Code:{",
                                iIndent (iInterleave iNewline (map showInstruction is)),
                                iStr "}", iNewline]
@@ -219,7 +238,8 @@ showInstruction (Pushglobal f) = iStr "Pushglobal " `iAppend` iStr f
 showInstruction (Push n) = iStr "Push " `iAppend` iNum n
 showInstruction (Pushint n) = iStr "Pushint " `iAppend` iNum n
 showInstruction Mkap = iStr "Mkap"
-showInstruction (Slide n) = iStr "Slide " `iAppend` iNum n
+showInstruction (Update n) = iStr "Update " `iAppend` iNum n
+showInstruction (Pop n) = iStr "Pop " `iAppend` iNum n
 
 showState :: GState -> ISeq
 showState s = iConcat [showStack s, iNewline, showInstructions (gCode s), iNewline]
@@ -228,7 +248,8 @@ showStack :: GState -> ISeq
 showStack s = iConcat [iStr " Stack:[", iIndent (iInterleave iNewline (map (showStackItem s) (reverse (gStack s)))), iStr "]"]
 
 showStackItem :: GState -> Addr -> ISeq
-showStackItem s a = iConcat [iStr (showAddr a), iStr ": ", showNode s a (hLookup (gHeap s) a)]
+showStackItem s a = iConcat [iStr (showAddr a), iStr ": ", showNode s a node]
+    where node = hLookup (gHeap s) a
 
 showNode :: GState -> Addr -> Node -> ISeq
 showNode s a (NNum n) = iNum n
@@ -236,6 +257,7 @@ showNode s a (NGlobal n g) = iConcat [iStr "Global ", iStr v]
     where
         v = head [n | (n,b) <- gGlobals s, a == b]
 showNode s a (NAp a1 a2) = iConcat [iStr "Ap ", iStr (showAddr a1), iStr " ", iStr (showAddr a2)]
+showNode s a (NInd a1) = iConcat [iStr "Ind ", iStr (showAddr a1)]
 
 showStats :: GState -> ISeq
 showStats s = iConcat [iStr "Steps taken = ", iNum (statGetSteps (gStats s))]
