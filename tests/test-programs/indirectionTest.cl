@@ -1,4 +1,4 @@
 id x = x;
-main = let
+main = letrec
          num = twice id 3
        in id num

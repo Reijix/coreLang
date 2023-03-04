@@ -29,6 +29,7 @@ library coreLib
                       UsefulFuns,
                       G1,
                       G2,
+                      G3,
                       PrettyPrint,
                       ISeq,
                       Parser,
