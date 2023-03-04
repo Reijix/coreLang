@@ -30,6 +30,7 @@ library coreLib
                       G1,
                       G2,
                       G3,
+                      G4,
                       PrettyPrint,
                       ISeq,
                       Parser,

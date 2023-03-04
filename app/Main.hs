@@ -32,6 +32,7 @@ import Mark4 ( run )
 import G1 ( run )
 import G2 ( run )
 import G3 ( run )
+import G4 ( run )
 
 data CmdOption = CmdOption
   { sourceFile :: String,
@@ -62,9 +63,9 @@ cmdOption =
     <*> strOption
       ( short 'b'
         <> metavar "<backend>"
-        <> help "Compile using <backend>\nSupported backend: [Mark1, Mark2, Mark3, Mark4, G1, G2, G3]"
+        <> help "Compile using <backend>\nSupported backend: [Mark1, Mark2, Mark3, Mark4, G1, G2, G3, G4]"
         <> showDefault
-        <> value "G3"
+        <> value "G4"
       )
 
 main :: IO ()
@@ -104,4 +105,5 @@ run (CmdOption sourceFile _ ppr backend) = do
     "G1" -> putStrLn (G1.run prog)
     "G2" -> putStrLn (G2.run prog)
     "G3" -> putStrLn (G3.run prog)
+    "G4" -> putStrLn (G4.run prog)
     _ -> error "Backend doesn't exist!"
