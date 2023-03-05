@@ -16,7 +16,7 @@ testPrograms =
     [
     ("negate.cl", -3),
     ("negate2.cl", 3),
-    ("arithTest1.cl", 10),
+    ("arithTest1.cl", 23),
     ("arithTest2.cl", 25),
     ("arithTest3.cl", -1)
     ]

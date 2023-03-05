@@ -64,7 +64,5 @@ test-suite mark4-tests
     hs-source-dirs: tests
     build-depends: base,
                    HUnit,
-                   parser-lib,
-                   compiler-lib,
-                   prettyprint-lib
+                   coreLib
     default-language: Haskell2010
