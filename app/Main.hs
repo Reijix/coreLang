@@ -34,6 +34,7 @@ import G2 ( run )
 import G3 ( run )
 import G4 ( run )
 import G5 ( run )
+import G6 ( run )
 
 data CmdOption = CmdOption
   { sourceFile :: String,
@@ -64,9 +65,9 @@ cmdOption =
     <*> strOption
       ( short 'b'
         <> metavar "<backend>"
-        <> help "Compile using <backend>\nSupported backend: [Mark1, Mark2, Mark3, Mark4, G1, G2, G3, G4, G5]"
+        <> help "Compile using <backend>\nSupported backend: [Mark1, Mark2, Mark3, Mark4, G1, G2, G3, G4, G5, G6]"
         <> showDefault
-        <> value "G5"
+        <> value "G6"
       )
 
 main :: IO ()
@@ -93,6 +94,10 @@ run (CmdOption sourceFile _ ppr backend) = do
             Left prog -> prog
             Right err -> error err
 
+  -- optionally prettyprint
+  when ppr $ putStrLn . iDisplay . pprProgram $ prog
+  when ppr $ print prog
+
   -- compile, eval, showResults
   case backend of 
     "Mark1" -> putStrLn (Mark1.run prog)
@@ -105,8 +110,5 @@ run (CmdOption sourceFile _ ppr backend) = do
     "G3" -> putStrLn (G3.run prog)
     "G4" -> putStrLn (G4.run prog)
     "G5" -> putStrLn (G5.run prog)
+    "G6" -> putStrLn (G6.run prog)
     _ -> error "Backend doesn't exist!"
-
-  -- optionally prettyprint
-  when ppr $ putStrLn . iDisplay . pprProgram $ prog
-  when ppr $ print prog
