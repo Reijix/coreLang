@@ -37,7 +37,7 @@ library coreLib
                       ISeq,
                       Parser,
                       Syntax
-    build-depends:    base, mtl, containers
+    build-depends:    base, mtl, containers, extra
     hs-source-dirs:   compiler/Mark,
                       compiler/utils,
                       compiler/GMachine,
@@ -51,7 +51,7 @@ executable coreLang
     main-is:          Main.hs
     build-depends:    base,
                       optparse-applicative,
-                      coreLib, containers
+                      coreLib, containers, extra
     hs-source-dirs:   app
     default-language: Haskell2010
 

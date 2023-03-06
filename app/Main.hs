@@ -95,7 +95,7 @@ run (CmdOption sourceFile _ ppr backend) = do
             Right err -> error err
 
   -- optionally prettyprint
-  when ppr $ putStrLn . iDisplay . pprProgram $ prog
+  --when ppr $ putStrLn . iDisplay . pprProgram $ prog
   when ppr $ print prog
 
   -- compile, eval, showResults

@@ -8,7 +8,6 @@ import Control.Monad.State.Strict
     ( gets, modify, evalState, MonadState(get), State )
 import UsefulFuns (mapAccuml)
 import ISeq (iDisplay, iInterleave, iNewline, iLayn, iConcat, iStr, iIndent, ISeq, iAppend, iNum)
-import Debug.Trace
 
 -- data structures
 data Instruction

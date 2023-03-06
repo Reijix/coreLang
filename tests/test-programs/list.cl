@@ -1,0 +1,1 @@
+main = cons 5 nil

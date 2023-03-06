@@ -8,7 +8,8 @@ import Control.Monad.State.Strict
     ( gets, modify, evalState, MonadState(get), State )
 import UsefulFuns (mapAccuml)
 import ISeq (iDisplay, iInterleave, iNewline, iLayn, iConcat, iStr, iIndent, ISeq, iAppend, iNum)
-import Debug.Trace
+import Data.Char (digitToInt)
+import Data.List.Extra ( headDef )
 
 -- data structures
 data Instruction
@@ -109,7 +110,7 @@ step :: GMonad ()
 step = do
     is <- getCode
     putCode $ tail is
-    dispatch $ head is
+    dispatch $ headDef (error "step: no instruction, head failed") is
 
 dispatch :: Instruction -> GMonad ()
 dispatch (Pushglobal f) = pushglobal f
@@ -148,6 +149,19 @@ rearrange n = do
 
 -- instructions
 pushglobal :: Name -> GMonad ()
+pushglobal name@['P', 'a', 'c', 'k', '{', t, ',', n, '}'] = do
+    stack <- getStack
+    globals <- getGlobals
+    heap <- getHeap
+    let a = aLookup globals name (-1)
+    a' <- case a of
+        (-1) -> do
+            let (heap', a') = hAlloc heap (NGlobal (digitToInt n) [Pack (digitToInt t) (digitToInt n), Update 0, Unwind])
+            putHeap heap'
+            putGlobals $ (name, a') : globals
+            return a'
+        _ -> return a
+    putStack $ a' : stack
 pushglobal name = do
     stack <- getStack
     globals <- getGlobals
@@ -172,7 +186,7 @@ mkap :: GMonad ()
 mkap = do
     stack <- getStack
     heap <- getHeap
-    let (heap', a) = hAlloc heap (NAp (head stack) (head $ tail stack))
+    let (heap', a) = hAlloc heap (NAp (headDef (error "mkap no head found") stack ) (headDef (error "mkap no head . tail found") (tail stack)))
     putStack (a : drop 2 stack)
     putHeap heap'
 push :: Int -> GMonad ()
@@ -190,9 +204,9 @@ unwind :: GMonad ()
 unwind = do
     heap <- getHeap
     stack <- getStack
-    (i', s') <- head <$> getDump
+    (i', s') <- headDef (error "unwind: no head of dump found") <$> getDump
     d' <- tail <$> getDump
-    let a = head stack
+    let a = headDef (error "unwind: no head of stack found") stack
     let node = hLookup heap a
     case node of
         NNum n -> putCode i' >> putStack (a : s') >> putDump d'
@@ -201,14 +215,14 @@ unwind = do
                             then putCode c >> rearrange n
                             else putCode i' >> putStack (last stack : s') >> putDump d'
         NInd a1 -> putStack (a1 : tail stack) >> putCode [Unwind]
-        NConstr n as -> putStack (head stack : s') >> putCode i' >> putDump d'
+        NConstr n as -> putStack (headDef (error "unwind: no head of stack found") stack : s') >> putCode i' >> putDump d'
 
 update :: Int -> GMonad ()
 update n = do
     stack <- getStack
     heap <- getHeap
     -- TODO indirection just doesn't get created...
-    let heap' = hUpdate heap (stack !! (n + 1)) (NInd (head stack))
+    let heap' = hUpdate heap (stack !! (n + 1)) (NInd (headDef (error "update: no head of stack found") stack))
     let node = hLookup heap' (stack !! (n + 1))
     putHeap heap'
     putStack $ tail stack
@@ -224,13 +238,13 @@ doEval = do
     s <- getStack
     d <- getDump
     putDump $ (i, tail s) : d
-    putStack [head s]
+    putStack [headDef (error "doEval: no head of stack found") s]
     putCode [Unwind]
 
 slide :: Int -> GMonad ()
 slide num = do
     stack <- getStack
-    putStack (head stack : drop (num + 1) stack)
+    putStack (headDef (error "slide: no head of stack found") stack : drop (num + 1) stack)
 
 alloc :: Int -> GMonad ()
 alloc n = do
@@ -251,9 +265,9 @@ cond :: GCode -> GCode -> GMonad ()
 cond c1 c2 = do
     stack <- getStack
     code <- getCode
-    num <- unboxInteger $ head stack
+    b <- unboxBoolean $ headDef (error "cond: no head of stack found") stack
     putStack $ tail stack
-    if num == 1
+    if b
         then putCode $ c1 ++ code
         else putCode $ c2 ++ code
 
@@ -271,18 +285,18 @@ casejump ts = do
     stack <- getStack
     heap <- getHeap
     code <- getCode
-    let node = hLookup heap (head stack)
+    let node = hLookup heap (headDef (error "casejump: no head of stack found") stack)
     case node of
         (NConstr t ss) -> do
             let i' = aLookup ts t $ error "casejump: tag of constructor not found in casejumps list!"
             putCode $ i' ++ code
-        _ -> error "casejump: node on top of stack isnt constructor!!"
+        o -> error $ "casejump: node on top of stack isnt constructor!! Instead: " ++ show o 
 
 split :: Int -> GMonad ()
 split n = do
     stack <- getStack
     heap <- getHeap
-    let node = hLookup heap (head stack)
+    let node = hLookup heap (headDef (error "split: no head of stack found") stack)
     case node of
         (NConstr t ss) -> putStack $ ss ++ tail stack
         _ -> error "split: node on top of stack isnt constructor!!"
@@ -293,10 +307,10 @@ doPrint = do
     heap <- getHeap
     code <- getCode
     output <- getOutput
-    let node = hLookup heap (head stack)
+    let node = hLookup heap (headDef (error "doPrint: no head of stack found") stack)
     case node of
         (NNum n) -> do
-            putOutput (output ++ (' ' : show n))
+            putOutput (output ++ show n)
             putStack $ tail stack
         (NConstr t as) -> do
             let n = length as
@@ -307,10 +321,19 @@ boxBoolean :: Bool -> GMonad ()
 boxBoolean b = do
     stack <- getStack
     heap <- getHeap
-    let b' = if b then 1 else 0
-    let (h', a) = hAlloc heap (NNum b')
+    let b' = if b then 2 else 1
+    let (h', a) = hAlloc heap (NConstr b' [])
     putHeap h'
     putStack $ a : stack
+
+unboxBoolean :: Addr -> GMonad Bool
+unboxBoolean a = do
+    h <- getHeap
+    return $ ub (hLookup h a)
+    where
+        ub (NConstr 2 []) = True
+        ub (NConstr 1 []) = False
+        ub _ = error "Unboxing a non-boolean!"
 
 boxInteger :: Int -> GMonad()
 boxInteger n = do
@@ -335,7 +358,7 @@ primitive1 :: (b -> GMonad ())
 primitive1 box unbox op = do
     s <- getStack
     putStack $ tail s
-    ub <- unbox $ head s
+    ub <- unbox $ headDef (error "primitive1: no head of stack found") s
     box $ op ub
 
 primitive2 :: (b -> GMonad ())
@@ -345,8 +368,8 @@ primitive2 :: (b -> GMonad ())
 primitive2 box unbox op = do
     s <- getStack
     putStack $ drop 2 s
-    ub0 <- unbox $ head s
-    ub1 <- unbox . head $ tail s
+    ub0 <- unbox $ headDef (error "primitive2: no head of stack found") s
+    ub1 <- unbox . headDef (error "primitive2: no head of tail stack found") $ tail s
     box $ op ub0 ub1
 
 arithmetic1 :: (Int -> Int) -> GMonad ()
@@ -424,8 +447,9 @@ compileC (EVar v) env = if v `elem` aDomain env
     then [Push (aLookup env v (error "cant happen"))]
     else [Pushglobal v]
 compileC (ENum n) env = [Pushint n]
-compileC (EConstr t 0) env = [Pack t 0]
-compileC (EAp e1 e2) env 
+compileC (EConstr t a) env = [Pushglobal $ "Pack{" ++ show t ++ "," ++ show a ++ "}"]
+--compileC (EConstr t 0) env = [Pack t 0]
+compileC (EAp e1 e2) env
     | saturatedCons spine = compileCS (reverse spine) env
     | otherwise =  compileC e2 env ++ compileC e1 (argOffset 1 env) ++ [Mkap]
     where
@@ -574,7 +598,7 @@ showNode :: GState -> Addr -> Node -> ISeq
 showNode s a (NNum n) = iNum n
 showNode s a (NGlobal n g) = iConcat [iStr "Global ", iStr v]
     where
-        v = head [n | (n,b) <- gGlobals s, a == b]
+        v = headDef (error "showNode: no head of globals with fitting name found") [n | (n,b) <- gGlobals s, a == b]
 showNode s a (NAp a1 a2) = iConcat [iStr "Ap ", iStr (showAddr a1), iStr " ", iStr (showAddr a2)]
 showNode s a (NInd a1) = iConcat [iStr "Ind ", iStr (showAddr a1)]
 showNode s a (NConstr t as) = iConcat [iStr "Cons ", iNum t, iStr " [", iInterleave (iStr ", ") (map (iStr . showAddr) as), iStr "]"]
