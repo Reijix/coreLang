@@ -85,6 +85,11 @@ pThen5 combine p1 p2 p3 p4 p5 toks =
   [ (combine v1 v2 v3 v4 v5, toks5) | (v1, toks1) <- p1 toks, (v2, toks2) <- p2 toks1, (v3, toks3) <- p3 toks2, (v4, toks4) <- p4 toks3, (v5, toks5) <- p5 toks4
   ]
 
+pThen6 :: (a -> b -> c -> d -> e -> f -> g) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e -> Parser f -> Parser g
+pThen6 combine p1 p2 p3 p4 p5 p6 toks =
+  [ (combine v1 v2 v3 v4 v5 v6, toks6) | (v1, toks1) <- p1 toks, (v2, toks2) <- p2 toks1, (v3, toks3) <- p3 toks2, (v4, toks4) <- p4 toks3, (v5, toks5) <- p5 toks4, (v6, toks6) <- p6 toks5
+  ]
+
 pEmpty :: a -> Parser a
 pEmpty elem toks = [(elem, toks)]
 
@@ -113,9 +118,9 @@ pSc = pThen4 mk_sc pVar (pZeroOrMore pVar) (pLit "=") pExpr
     mk_sc name args _ expr = (name, args, expr)
 
 pAExpr :: Parser CoreExpr
-pAExpr = pEVar <|> pENum <|> pEConstr <|> pParensExpr
+pAExpr = pEConstr <|> pEVar <|> pENum <|> pParensExpr
   where
-    pEConstr = pThen5 (\_ n1 _ n2 _ -> EConstr n1 n2) (pLit "Pack{") pNum (pLit ",") pNum (pLit "}")
+    pEConstr = pThen6 (\_ _ n1 _ n2 _ -> EConstr n1 n2) (pLit "Pack") (pLit "{") pNum (pLit ",") pNum (pLit "}")
     pENum = pApply pNum ENum
     pEVar = pApply pVar EVar
     pParensExpr = pThen3 (\l expr r -> expr) (pLit "(") pExpr (pLit ")")
@@ -186,6 +191,8 @@ syntax :: [Token] -> Either CoreProgram String
 syntax = take_first_parse . pProgram
   where
     take_first_parse ((prog, []) : other_parses) = Left prog
+    take_first_parse [] = Right "Syntax error, nothing parsed!!"
+    --take_first_parse other = Right ("Syntax error:\n" ++ show other)
     take_first_parse other = Right ("Syntax error, was able to take:\n" ++ (show . fst . head $ other) ++ "\nwasnt able to take:\n" ++ (show . snd . head $ other))
 
 parse :: String -> Either CoreProgram String
