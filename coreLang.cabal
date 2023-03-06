@@ -33,6 +33,7 @@ library coreLib
                       G4,
                       G5,
                       G6,
+                      G7,
                       PrettyPrint,
                       ISeq,
                       Parser,

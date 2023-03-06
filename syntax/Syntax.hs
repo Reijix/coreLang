@@ -58,9 +58,5 @@ preludeDefs =
         (EAp (EVar "g") (EVar "x"))
     ),
     ("compose", ["f", "g", "x"], EAp (EVar "f") (EAp (EVar "g") (EVar "x"))),
-    ("twice", ["f"], EAp (EAp (EVar "compose") (EVar "f")) (EVar "f")),
-    ("nil", [], EConstr 1 0),
-    ("cons", ["x", "xs"], EAp (EAp (EConstr 2 2) (EVar "x")) (EVar "xs")),
-    ("true", [], EConstr 2 0),
-    ("false", [], EConstr 1 0)
+    ("twice", ["f"], EAp (EAp (EVar "compose") (EVar "f")) (EVar "f"))
   ]
