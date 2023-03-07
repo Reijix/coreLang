@@ -35,6 +35,7 @@ library coreLib
                       G6,
                       G7,
                       TIM1,
+                      TIM2,
                       PrettyPrint,
                       ISeq,
                       Parser,

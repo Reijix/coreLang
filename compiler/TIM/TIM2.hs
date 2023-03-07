@@ -1,0 +1,318 @@
+module TIM2 (run, fullRun) where
+
+import Syntax
+import Heap
+import Assoc
+import ISeq
+import Debug.Trace (trace)
+
+-- definitions --------------------------------------------------------------------------
+
+data Instruction
+    = Take Int
+    | Enter TAMode
+    | Push TAMode
+    | PushV ValueAMode
+    | Return
+    | Op Op
+    | Cond [Instruction] [Instruction]
+
+data Op = Add | Sub | Mul | Div | Neg
+        | Gt | Ge | Lt | Le | Eq | Ne deriving (Eq, Show)
+
+data ValueAMode = FramePtr | IntVConst Int deriving (Show)
+
+data TAMode
+    = Arg Int
+    | Label String
+    | Code [Instruction]
+    | IntConst Int
+
+data TState = TState {
+    tInstr :: [Instruction],
+    tFramePtr :: FramePtr,
+    tStack :: TStack,
+    tVStack :: TVStack,
+    tDump :: TDump,
+    tHeap :: THeap,
+    tCodeStore :: CodeStore,
+    tStats :: TStats
+    }
+
+data FramePtr
+    = FrameAddr Addr
+    | FrameInt Int
+    | FrameNull
+
+type TStack = [Closure]
+type Closure = ([Instruction], FramePtr)
+type TVStack = [Int]
+data TDump = DummyTDump
+type Frame = [Closure]
+
+type THeap = Heap Frame
+fAlloc :: THeap -> [Closure] -> (THeap, FramePtr)
+fGet :: THeap -> FramePtr -> Int -> Closure
+fUpdate :: THeap -> FramePtr -> Int -> Closure -> THeap
+fList :: Frame -> [Closure]
+fAlloc heap xs = (heap', FrameAddr addr)
+    where
+        (heap', addr) = hAlloc heap xs
+fGet heap (FrameAddr addr) n = f !! (n-1)
+    where f = hLookup heap addr
+fUpdate heap (FrameAddr addr) n closure = hUpdate heap addr newFrame
+    where
+        frame = hLookup heap addr
+        newFrame = take (n-1) frame ++ [closure] ++ drop n frame
+fList f = f
+
+type CodeStore = Assoc Name [Instruction]
+codeLookup :: CodeStore -> Name -> [Instruction]
+codeLookup cstore l = aLookup cstore l (error $ "Attempt to jump to unknown label " ++ show l)
+
+type TStats = Int
+statInitial :: TStats
+statIncSteps :: TStats -> TStats
+statGetSteps :: TStats -> Int
+statInitial = 0
+statIncSteps s = s+1
+statGetSteps s = s
+
+-- compiler -----------------------------------------------------------------------------
+
+compile :: CoreProgram -> TState
+compile program = TState
+    [Enter (Label "main")]
+    FrameNull
+    initialArgStack
+    initialValueStack
+    initialDump
+    hInitial
+    compiledCode
+    statInitial
+    where
+        scDefs = preludeDefs ++ program
+        compiledScDefs = map (compileSc initialEnv) scDefs
+        compiledCode = compiledScDefs ++ compiledPrimitives
+        initialEnv = [(name, Label name) | (name, args, body) <- scDefs] ++ [(name, Label name) | (name, code) <- compiledPrimitives]
+initialArgStack :: TStack
+initialArgStack = [([], FrameNull)]
+initialValueStack :: TVStack
+initialValueStack = []
+initialDump :: TDump
+initialDump = DummyTDump
+compiledPrimitives :: [(Name, [Instruction])]
+compiledPrimitives = [] -- map mkPrim2 binOps
+    --where mkPrim2 (name, op) = (name, [Take 2, Push (Code [Push (Code [Op op, Return]), Enter (Arg 1)]), Enter (Arg 2)])
+
+binOps :: Assoc Name Op
+binOps = [("+", Add), ("-", Sub), ("*", Mul), ("/", Div), ("==", Eq), ("~=", Ne), ("<", Lt), ("<=", Le), (">", Gt), (">=", Ge)]
+type TCompilerEnv = [(Name, TAMode)]
+
+compileSc :: TCompilerEnv -> CoreScDefn -> (Name, [Instruction])
+compileSc env (name, args, body) = (name, instructions')
+    where
+        instructions' = if argCount /= 0 then Take (length args) : instructions else instructions
+        instructions = compileR body newEnv
+        argCount = length args
+        newEnv = zip args (map Arg [1..]) ++ env
+
+compileR :: CoreExpr -> TCompilerEnv -> [Instruction]
+-- TODO if doesnt work correctly!
+compileR e@(EAp (EAp (EAp (EVar "if") cond) i1) i2) env = compileB cond env [Cond (compileR i1 env) (compileR i2 env)]
+compileR e@(EAp (EAp (EVar op) e1) e2) env | op `elem` aDomain binOps = compileB e env [Return]
+compileR e@(ENum _) env = compileB e env [Return]
+compileR e@(EAp (EVar "neg") e1) env = compileB e env [Return]
+compileR (EAp e1 e2) env = Push (compileA e2 env) : compileR e1 env
+compileR e@(EVar v) env = [Enter (compileA e env)]
+compileR e env = error $ "compileR: not implemented yet: " ++ show e
+
+compileA :: CoreExpr -> TCompilerEnv -> TAMode
+compileA (EVar v) env | v `elem` aDomain env = aLookup env v (error "compileA: cant happen")
+compileA (ENum n) env = IntConst n
+compileA e env = Code (compileR e env)
+
+compileB :: CoreExpr -> TCompilerEnv -> [Instruction] -> [Instruction]
+compileB (EAp (EAp (EVar op) e1) e2) env cont = compileB e2 env $ compileB e1 env $ Op (aLookup binOps op (error "compileB: Op not found")) : cont
+compileB (EAp (EVar "neg") e1) env cont = compileB e1 env $ Op Neg : cont
+compileB (ENum n) env cont = PushV (IntVConst n) : cont
+compileB e env cont = Push (Code cont) : compileR e env
+
+-- evaluator ----------------------------------------------------------------------------
+
+eval :: TState -> [TState]
+eval state = state : restStates
+    where
+        restStates | tFinal state = []
+                   | otherwise = eval nextState
+        nextState = doAdmin (step state)
+
+doAdmin :: TState -> TState
+doAdmin = applyToStats statIncSteps
+
+tFinal :: TState -> Bool
+tFinal state | null $ tInstr state = True
+             | otherwise = False
+
+applyToStats :: (TStats -> TStats) -> TState -> TState
+applyToStats fun state = state {tStats = fun $ tStats state}
+
+step :: TState -> TState
+step (TState (Take n : instr) fptr stack vstack dump heap cstore stats) | length stack >= n = TState instr fptr' (drop n stack) vstack dump heap' cstore stats
+                                                                        | otherwise = error "step: Too few args for Take instructions"
+    where (heap', fptr') = fAlloc heap (take n stack)
+step (TState [Enter am] fptr stack vstack dump heap cstore stats) = TState instr' fptr' stack vstack dump heap cstore stats
+    where (instr', fptr') = amToClosure am fptr heap cstore
+step (TState (Push am : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr (amToClosure am fptr heap cstore : stack) vstack dump heap cstore stats
+step (TState (PushV FramePtr : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack (getNum fptr:vstack) dump heap cstore stats
+    where
+        getNum FrameNull = error "PushV called with fptr = FrameNull, expected FrameInt"
+        getNum (FrameInt n) = n
+        getNum (FrameAddr a) = error "PushV called with fptr = FrameAddr, expected FrameInt"
+step (TState ((PushV (IntVConst n)) : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack (n:vstack) dump heap cstore stats
+step (TState [Return] fptr stack vstack dump heap cstore stats) = TState i' f' s vstack dump heap cstore stats
+    where (i', f'):s = stack
+step (TState (Op Neg : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack (negate n1 : vs) dump heap cstore stats
+    where (n1:vs) = vstack
+step (TState (Op op : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack (f n1 n2 : vs) dump heap cstore stats
+    where
+        (n1:n2:vs) = vstack
+        f = aLookup builtInOps op (error $ "Op: no such builtin " ++ show op)
+step (TState [Cond i1 i2] fptr stack vstack dump heap cstore stats) = TState i' fptr stack vs dump heap cstore stats
+    where 
+        (v:vs) = vstack
+        i' = if v == 0 then i1 else i2
+step st = error $ "step: found\n" ++ iDisplay (showInstructions Full (tInstr st))
+
+amToClosure :: TAMode -> FramePtr -> THeap -> CodeStore -> Closure
+amToClosure (Arg n) fptr heap cstore = fGet heap fptr n
+amToClosure (Code il) fptr heap cstore = (il, fptr)
+amToClosure (Label l) fptr heap cstore = (codeLookup cstore l, fptr)
+amToClosure (IntConst n) fptr heap cstore = (intCode, FrameInt n)
+
+intCode :: [Instruction]
+intCode = [PushV FramePtr, Return]
+
+builtInOps :: Assoc Op (Int -> Int -> Int)
+builtInOps = [
+    (Add, (+)), (Sub, (-)), (Mul, (*)), (Div, div), (Eq, comp (==)), (Ne, comp (/=)), (Lt, comp (<)), (Le, comp (<=)), (Gt, comp (>)), (Ge, comp (>=))
+    ]
+    where 
+        comp :: (Int -> Int -> Bool) -> (Int -> Int -> Int)
+        comp op a b = if op a b then 0 else 1
+
+
+-- printing -----------------------------------------------------------------------------
+showFullResults states = iDisplay (iConcat [
+    iStr "Supercombinator definitions", iNewline, iNewline,
+    showScDefns firstState, iNewline, iNewline,
+    iStr "State transitions", iNewline,
+    iLayn (map showState states), iNewline, iNewline,
+    showStats (last states)
+    ])
+    where (firstState:restState) = states
+
+showResults states = iDisplay (iConcat [
+    showState lastState, iNewline, iNewline, showStats lastState
+    ])
+    where lastState = last states
+
+showScDefns :: TState -> ISeq
+showScDefns (TState instr fptr stack vstack dump heap cstore stats) = iInterleave iNewline (map showSc cstore)
+
+showSc :: (Name, [Instruction]) -> ISeq
+showSc (name, il) = iConcat [
+    iStr "Code for ", iStr name, iStr ":", iNewline,
+    iStr "  ", showInstructions Full il, iNewline, iNewline
+    ]
+
+showState :: TState -> ISeq
+showState (TState instr fptr stack vstack dump heap cstore stats) = iConcat [
+    iStr "Code: ", showInstructions Terse instr, iNewline,
+    showFrame heap fptr,
+    showStack stack,
+    showValueStack vstack,
+    showDump dump,
+    iNewline
+    ]
+
+showFrame :: THeap -> FramePtr -> ISeq
+showFrame heap FrameNull = iStr "Null frame ptr" `iAppend` iNewline
+showFrame heap (FrameAddr addr) = iConcat [
+    iStr "Frame: <",
+    iIndent (iInterleave iNewline (map showClosure (fList (hLookup heap addr)))),
+    iStr ">", iNewline
+    ]
+showFrame heap (FrameInt n) = iConcat [iStr "Frame ptr (int): ", iNum n, iNewline]
+
+showStack :: TStack -> ISeq
+showStack stack = iConcat [
+    iStr "Arg stack: [",
+    iIndent (iInterleave iNewline (map showClosure stack)),
+    iStr "]", iNewline
+    ]
+
+showValueStack :: TVStack -> ISeq
+showValueStack vstack = iConcat [
+    iStr "Value stack: [",
+    iIndent (iInterleave (iStr ", ") (map (iStr . show) vstack)),
+    iStr "]", iNewline
+    ]
+
+showDump :: TDump -> ISeq
+showDump dump = iNil
+
+showClosure :: Closure -> ISeq
+showClosure (i,f) = iConcat [
+    iStr "(", showInstructions Terse i, iStr ", ", showFramePtr f, iStr ")"
+    ]
+
+showFramePtr :: FramePtr -> ISeq
+showFramePtr FrameNull = iStr "null"
+showFramePtr (FrameAddr a) = iStr (show a)
+showFramePtr (FrameInt n) = iStr "int " `iAppend` iNum n
+
+showStats :: TState -> ISeq
+showStats (TState instr fptr stack vstack dump heap code stats) = iConcat [
+    iStr "Steps taken = ", iNum (statGetSteps stats), iNewline,
+    iStr "No of frames allocated = ", iNum (hSize heap),
+    iNewline
+    ]
+
+data HowMuchToPrint = Full | Terse | None
+showInstructions :: HowMuchToPrint -> [Instruction] -> ISeq
+showInstructions None il = iStr "{..}"
+showInstructions Terse il = iConcat [
+    iStr "{", iIndent (iInterleave (iStr ", ") body), iStr "}"
+    ]
+    where
+        instrs = map (showInstruction None) il
+        body | length il <= nTerse = instrs
+             | otherwise = take nTerse instrs ++ [iStr ".."]
+showInstructions Full il = iConcat [
+    iStr "{ ", iIndent (iInterleave sep instrs), iStr " }"
+    ]
+    where
+        sep = iStr "," `iAppend` iNewline
+        instrs = map (showInstruction Full) il
+nTerse = 3
+
+showInstruction d (Take m) = iStr "Take " `iAppend` iNum m
+showInstruction d (Enter x) = iStr "Enter " `iAppend` showArg d x
+showInstruction d (Push x) = iStr "Push " `iAppend` showArg d x
+showInstruction d (PushV mode) = iStr "PushV " `iAppend` iStr (show mode)
+showInstruction d Return = iStr "Return"
+showInstruction d (Op op) = iStr "Op " `iAppend` iStr (show op)
+showInstruction d (Cond i1 i2) = iConcat [iStr "Cond ", showInstructions Terse i1, iStr " ", showInstructions Terse i2]
+
+showArg d (Arg m) = iStr "Arg " `iAppend` iNum m
+showArg d (Code il) = iStr "Code " `iAppend` showInstructions d il
+showArg d (Label s) = iStr "Label " `iAppend` iStr s
+showArg d (IntConst n) = iStr "IntConst " `iAppend` iNum n
+
+-- runner -------------------------------------------------------------------------------
+run :: CoreProgram -> String
+run = showResults . eval . compile
+
+fullRun :: CoreProgram -> String
+fullRun = showFullResults . eval . compile
