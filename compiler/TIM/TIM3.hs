@@ -1,15 +1,19 @@
-module TIM2 (run, fullRun) where
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use zipWith" #-}
+module TIM3 (run, fullRun) where
 
 import Syntax
 import Heap
 import Assoc
 import ISeq
 import Debug.Trace (trace)
+import UsefulFuns (mapAccuml)
 
 -- definitions --------------------------------------------------------------------------
 
 data Instruction
-    = Take Int
+    = Take Int Int
+    | Move Int TAMode
     | Enter TAMode
     | Push TAMode
     | PushV ValueAMode
@@ -64,6 +68,7 @@ fUpdate heap (FrameAddr addr) n closure = hUpdate heap addr newFrame
     where
         frame = hLookup heap addr
         newFrame = take (n-1) frame ++ [closure] ++ drop n frame
+fUpdate _ fptr _ _ = error $ "fUpdate called with wrong fptr: " ++ iDisplay (showFramePtr fptr)
 fList f = f
 
 type CodeStore = Assoc Name [Instruction]
@@ -112,35 +117,57 @@ type TCompilerEnv = [(Name, TAMode)]
 compileSc :: TCompilerEnv -> CoreScDefn -> (Name, [Instruction])
 compileSc env (name, args, body) = (name, instructions')
     where
-        instructions' = if argCount /= 0 then Take (length args) : instructions else instructions
-        instructions = compileR body newEnv
-        argCount = length args
+        instructions' = Take d n : is
+        (d, is) = compileR body newEnv n
+        n = length args
         newEnv = zip args (map Arg [1..]) ++ env
 
-compileR :: CoreExpr -> TCompilerEnv -> [Instruction]
-compileR e@(EAp (EAp (EAp (EVar "if") cond) i1) i2) env = compileB cond env [Cond (compileR i1 env) (compileR i2 env)]
-compileR e@(EAp (EAp (EVar op) e1) e2) env | op `elem` aDomain binOps = compileB e env [Return]
-compileR e@(ENum _) env = compileB e env [Return]
-compileR e@(EAp (EVar "neg") e1) env = compileB e env [Return]
-compileR (EAp e1 e2) env = Push (compileA e2 env) : compileR e1 env
-compileR e@(EVar v) env = [Enter (compileA e env)]
-compileR e env = error $ "compileR: not implemented yet: " ++ show e
+compileR :: CoreExpr -> TCompilerEnv -> Int -> (Int, [Instruction])
+compileR e@(EAp (EAp (EAp (EVar "if") cond) i1) i2) env d = compileB cond env (dmax, [Cond ist ise])
+    where
+        (dt, ist) = compileR i1 env d
+        (de, ise) = compileR i2 env d
+        dmax = max dt de
+compileR e@(EAp (EAp (EVar op) e1) e2) env d | op `elem` aDomain binOps = compileB e env (d, [Return])
+compileR e@(ENum _) env d = compileB e env (d, [Return])
+compileR e@(EAp (EVar "neg") e1) env d = compileB e env (d, [Return])
+compileR (EAp e1 e2) env d = (d2, Push am : is)
+    where
+        (d1, am) = compileA e2 env d
+        (d2, is) = compileR e1 env d1
+compileR e@(EVar v) env d = (d', [Enter am])
+    where (d', am) = compileA e env d
+compileR (ELet isRec defs e) env d = (d', moves ++ is)
+    where
+        (dn, moves) = mapAccuml makeMove (d + length defs) (zip defs frameSlots)
+        (d', is) = compileR e newEnv dn
+        newEnv = zip (map fst defs) (map mkIndMode frameSlots) ++ env
+        makeMove d ((name, rhs), frameSlot) = (d', Move frameSlot am) where (d', am) = compileA rhs rhsEnv d
+        rhsEnv | isRec = newEnv
+               | otherwise = env
+        frameSlots = [d+1..d+length defs]
+compileR e env n = error $ "compileR: not implemented yet: " ++ show e
 
-compileA :: CoreExpr -> TCompilerEnv -> TAMode
-compileA (EVar v) env | v `elem` aDomain env = aLookup env v (error "compileA: cant happen")
-compileA (ENum n) env = IntConst n
-compileA e env = Code (compileR e env)
+compileA :: CoreExpr -> TCompilerEnv -> Int -> (Int, TAMode)
+compileA (EVar v) env d | v `elem` aDomain env = (d, aLookup env v (error "compileA: cant happen"))
+compileA (ENum n) env d = (d, IntConst n)
+compileA e env d = (d', Code is)
+    where (d', is) = compileR e env d
 
-compileB :: CoreExpr -> TCompilerEnv -> [Instruction] -> [Instruction]
-compileB (EAp (EAp (EVar op) e1) e2) env cont = compileB e2 env $ compileB e1 env $ Op (aLookup binOps op (error "compileB: Op not found")) : cont
-compileB (EAp (EVar "neg") e1) env cont = compileB e1 env $ Op Neg : cont
-compileB (ENum n) env cont = PushV (IntVConst n) : cont
-compileB e env cont = Push (Code cont) : compileR e env
+compileB :: CoreExpr -> TCompilerEnv -> (Int, [Instruction]) -> (Int, [Instruction])
+compileB (EAp (EAp (EVar op) e1) e2) env (d, cont) = compileB e2 env $ compileB e1 env (d, Op (aLookup binOps op (error "compileB: Op not found")) : cont)
+compileB (EAp (EVar "neg") e1) env (d, cont) = compileB e1 env (d, Op Neg : cont)
+compileB (ENum n) env (d, cont) = (d, PushV (IntVConst n) : cont)
+compileB e env (d, cont) = (d', Push (Code cont) : is)
+    where (d', is) = compileR e env d
+
+mkIndMode :: Int -> TAMode
+mkIndMode n = Code [Enter (Arg n)]
 
 -- evaluator ----------------------------------------------------------------------------
 
 eval :: TState -> [TState]
-eval state = state : restStates
+eval state | trace ("State is:\n" ++ iDisplay (showState state)) True = state : restStates
     where
         restStates | tFinal state = []
                    | otherwise = eval nextState
@@ -157,9 +184,15 @@ applyToStats :: (TStats -> TStats) -> TState -> TState
 applyToStats fun state = state {tStats = fun $ tStats state}
 
 step :: TState -> TState
-step (TState (Take n : instr) fptr stack vstack dump heap cstore stats) | length stack >= n = TState instr fptr' (drop n stack) vstack dump heap' cstore stats
-                                                                        | otherwise = error "step: Too few args for Take instructions"
-    where (heap', fptr') = fAlloc heap (take n stack)
+step (TState (Take t n : instr) fptr stack vstack dump heap cstore stats) | length stack >= n && t >= n = TState instr fptr' (drop n stack) vstack dump heap' cstore stats
+                                                                          | otherwise = error "step: Too few args for Take instructions"
+    where
+        closures = take n stack 
+        (heap', fptr') = fAlloc heap (closures ++ replicate (t-n) cDummy)
+        cDummy = ([], FrameNull)
+step (TState (Move i a : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack vstack dump heap' cstore stats
+    where
+        heap' = fUpdate heap fptr i (amToClosure a fptr heap cstore)
 step (TState [Enter am] fptr stack vstack dump heap cstore stats) = TState instr' fptr' stack vstack dump heap cstore stats
     where (instr', fptr') = amToClosure am fptr heap cstore
 step (TState (Push am : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr (amToClosure am fptr heap cstore : stack) vstack dump heap cstore stats
@@ -202,6 +235,7 @@ builtInOps = [
 
 
 -- printing -----------------------------------------------------------------------------
+showFullResults :: [TState] -> String
 showFullResults states = iDisplay (iConcat [
     iStr "Supercombinator definitions", iNewline, iNewline,
     showScDefns firstState, iNewline, iNewline,
@@ -227,7 +261,7 @@ showSc (name, il) = iConcat [
 
 showState :: TState -> ISeq
 showState (TState instr fptr stack vstack dump heap cstore stats) = iConcat [
-    iStr "Code: ", showInstructions Terse instr, iNewline,
+    iStr "Code: ", showInstructions Full instr, iNewline,
     showFrame heap fptr,
     showStack stack,
     showValueStack vstack,
@@ -294,16 +328,20 @@ showInstructions Full il = iConcat [
     where
         sep = iStr "," `iAppend` iNewline
         instrs = map (showInstruction Full) il
+nTerse :: Int
 nTerse = 3
 
-showInstruction d (Take m) = iStr "Take " `iAppend` iNum m
+showInstruction :: HowMuchToPrint -> Instruction -> ISeq
+showInstruction d (Take t n) = iConcat [iStr "Take ", iNum t, iStr " ", iNum n]
 showInstruction d (Enter x) = iStr "Enter " `iAppend` showArg d x
 showInstruction d (Push x) = iStr "Push " `iAppend` showArg d x
 showInstruction d (PushV mode) = iStr "PushV " `iAppend` iStr (show mode)
 showInstruction d Return = iStr "Return"
 showInstruction d (Op op) = iStr "Op " `iAppend` iStr (show op)
 showInstruction d (Cond i1 i2) = iConcat [iStr "Cond ", showInstructions Terse i1, iStr " ", showInstructions Terse i2]
+showInstruction d (Move i a) = iConcat [iStr "Move ", iNum i, iStr " ", showArg Terse a]
 
+showArg :: HowMuchToPrint -> TAMode -> ISeq
 showArg d (Arg m) = iStr "Arg " `iAppend` iNum m
 showArg d (Code il) = iStr "Code " `iAppend` showInstructions d il
 showArg d (Label s) = iStr "Label " `iAppend` iStr s
