@@ -1,4 +1,4 @@
-module TIM3 (run, fullRun) where
+module TIM4 (run, fullRun) where
 
 import Syntax
 import Heap
@@ -18,6 +18,7 @@ data Instruction
     | Return
     | Op Op
     | Cond [Instruction] [Instruction]
+    | PushMarker Int
 
 data Op = Add | Sub | Mul | Div | Neg
         | Gt | Ge | Lt | Le | Eq | Ne deriving (Eq, Show)
@@ -49,8 +50,8 @@ data FramePtr
 type TStack = [Closure]
 type Closure = ([Instruction], FramePtr)
 type TVStack = [Int]
-data TDump = DummyTDump
 type Frame = [Closure]
+type TDump = [(FramePtr, Int, TStack)]
 
 type THeap = Heap Frame
 fAlloc :: THeap -> [Closure] -> (THeap, FramePtr)
@@ -103,7 +104,7 @@ initialArgStack = [([], FrameNull)]
 initialValueStack :: TVStack
 initialValueStack = []
 initialDump :: TDump
-initialDump = DummyTDump
+initialDump = []
 compiledPrimitives :: [(Name, [Instruction])]
 compiledPrimitives = [] -- map mkPrim2 binOps
     --where mkPrim2 (name, op) = (name, [Take 2, Push (Code [Push (Code [Op op, Return]), Enter (Arg 1)]), Enter (Arg 2)])
@@ -118,7 +119,7 @@ compileSc env (name, args, body) = (name, instructions')
         instructions' = Take d n : is
         (d, is) = compileR body newEnv n
         n = length args
-        newEnv = zip args (map Arg [1..]) ++ env
+        newEnv = zip args (map mkUpdIndMode [1..]) ++ env
 
 compileR :: CoreExpr -> TCompilerEnv -> Int -> (Int, [Instruction])
 compileR e@(EAp (EAp (EAp (EVar "if") cond) i1) i2) env d = compileB cond env (dmax, [Cond ist ise])
@@ -133,13 +134,13 @@ compileR (EAp e1 e2) env d = (d2, Push am : is)
     where
         (d1, am) = compileA e2 env d
         (d2, is) = compileR e1 env d1
-compileR e@(EVar v) env d = (d', [Enter am])
+compileR e@(EVar v) env d = (d', mkEnter am)
     where (d', am) = compileA e env d
 compileR (ELet isRec defs e) env d = (d', moves ++ is)
     where
         (dn, moves) = mapAccuml makeMove (d + length defs) (zip defs frameSlots)
         (d', is) = compileR e newEnv dn
-        newEnv = zip (map fst defs) (map mkIndMode frameSlots) ++ env
+        newEnv = zip (map fst defs) (map mkUpdIndMode frameSlots) ++ env
         makeMove d ((name, rhs), frameSlot) = (d', Move frameSlot am) where (d', am) = compileA rhs rhsEnv d
         rhsEnv | isRec = newEnv
                | otherwise = env
@@ -161,6 +162,13 @@ compileB e env (d, cont) = (d', Push (Code cont) : is)
 
 mkIndMode :: Int -> TAMode
 mkIndMode n = Code [Enter (Arg n)]
+
+mkUpdIndMode :: Int -> TAMode
+mkUpdIndMode n = Code [PushMarker n, Enter (Arg n)]
+
+mkEnter :: TAMode -> [Instruction]
+mkEnter (Code i) = i
+mkEnter other_am = [Enter other_am]
 
 -- evaluator ----------------------------------------------------------------------------
 
@@ -200,6 +208,11 @@ step (TState (PushV FramePtr : instr) fptr stack vstack dump heap cstore stats) 
         getNum (FrameInt n) = n
         getNum (FrameAddr a) = error "PushV called with fptr = FrameAddr, expected FrameInt"
 step (TState ((PushV (IntVConst n)) : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack (n:vstack) dump heap cstore stats
+step (TState [Return] fptr [] vstack ((fu, x, s):d) heap cstore stats) = TState [Return] fptr s vstack d h' cstore stats
+    where
+        n:ns = vstack
+        h' = fUpdate heap fu x (intCode, FrameInt n)
+
 step (TState [Return] fptr stack vstack dump heap cstore stats) = TState i' f' s vstack dump heap cstore stats
     where (i', f'):s = stack
 step (TState (Op Neg : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack (negate n1 : vs) dump heap cstore stats
@@ -212,6 +225,7 @@ step (TState [Cond i1 i2] fptr stack vstack dump heap cstore stats) = TState i' 
     where 
         (v:vs) = vstack
         i' = if v == 0 then i1 else i2
+step (TState (PushMarker x : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr [] vstack ((fptr, x, stack) : dump) heap cstore stats
 step st = error $ "step: found\n" ++ iDisplay (showInstructions Full (tInstr st))
 
 amToClosure :: TAMode -> FramePtr -> THeap -> CodeStore -> Closure
@@ -338,6 +352,7 @@ showInstruction d Return = iStr "Return"
 showInstruction d (Op op) = iStr "Op " `iAppend` iStr (show op)
 showInstruction d (Cond i1 i2) = iConcat [iStr "Cond ", showInstructions Terse i1, iStr " ", showInstructions Terse i2]
 showInstruction d (Move i a) = iConcat [iStr "Move ", iNum i, iStr " ", showArg Terse a]
+showInstruction d (PushMarker x) = iStr "PushMarker " `iAppend` iNum x
 
 showArg :: HowMuchToPrint -> TAMode -> ISeq
 showArg d (Arg m) = iStr "Arg " `iAppend` iNum m
