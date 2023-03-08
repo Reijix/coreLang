@@ -43,13 +43,11 @@ Usage:
 This is a compiler for the coreLang as presented in "Implementing Functional
 Languages A Tutorial"
 
-Usage: coreLang <source file> [-o <destination file>] [-p] [-b <backend>]
+Usage: coreLang <source file> [-p] [-b <backend>]
 
   Compiles a given coreLang source-code.
 
 Available options:
-  -o <destination file>    Place the output into <destination file>.
-                           (default: "a.out")
   -p                       PrettyPrint the parsed program
   -b <backend>             Compile using <backend> Supported backend: [Mark1,
                            Mark2, Mark3, Mark4, G1, G2, G3, G4, G5, G6, G7,

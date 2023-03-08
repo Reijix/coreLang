@@ -42,7 +42,6 @@ import TIM3 ( run, fullRun )
 
 data CmdOption = CmdOption
   { sourceFile :: String,
-    destinationFile :: String,
     prettyPrint :: Bool,
     backend :: String
   }
@@ -53,13 +52,6 @@ cmdOption =
     <$> argument
       str
       ( metavar "<source file>"
-      )
-    <*> strOption
-      ( short 'o'
-          <> metavar "<destination file>"
-          <> help "Place the output into <destination file>."
-          <> showDefault
-          <> value "a.out"
       )
     <*> switch
       ( short 'p'
@@ -87,7 +79,7 @@ main = Main.run =<< execParser opts
 
 run :: CmdOption -> IO ()
 -- only lex and parse
-run (CmdOption sourceFile _ ppr backend) = do
+run (CmdOption sourceFile ppr backend) = do
   -- read sourceFile
   source <- openFile sourceFile ReadMode
   sourceText <- hGetContents source
@@ -99,8 +91,8 @@ run (CmdOption sourceFile _ ppr backend) = do
             Right err -> error err
 
   -- optionally prettyprint
-  --when ppr $ putStrLn . iDisplay . pprProgram $ prog
-  when ppr $ print prog
+  when ppr $ putStrLn . iDisplay . pprProgram $ prog
+  --when ppr $ print prog
 
   -- compile, eval, showResults
   case backend of 
