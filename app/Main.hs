@@ -82,7 +82,7 @@ main = Main.run =<< execParser opts
         (cmdOption <**> helper)
         ( fullDesc
             <> progDesc "Compiles a given coreLang source-code."
-            <> header "This is a compiler for the coreLang as presented in \"Implementing Functional Langauges A Tutorial\""
+            <> header "This is a compiler for the coreLang as presented in \"Implementing Functional Languages A Tutorial\""
         )
 
 run :: CmdOption -> IO ()
