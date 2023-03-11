@@ -38,6 +38,7 @@ library coreLib
                       TIM2,
                       TIM3,
                       TIM4,
+                      TIM5,
                       PrettyPrint,
                       ISeq,
                       Parser,
