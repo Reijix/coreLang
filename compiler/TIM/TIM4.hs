@@ -19,6 +19,7 @@ data Instruction
     | Op Op
     | Cond [Instruction] [Instruction]
     | PushMarker Int
+    | UpdateMarkers Int
 
 data Op = Add | Sub | Mul | Div | Neg
         | Gt | Ge | Lt | Le | Eq | Ne deriving (Eq, Show)
@@ -116,7 +117,9 @@ type TCompilerEnv = [(Name, TAMode)]
 compileSc :: TCompilerEnv -> CoreScDefn -> (Name, [Instruction])
 compileSc env (name, args, body) = (name, instructions')
     where
-        instructions' = Take d n : is
+        instructions' = mkUpd n ++ mkTake d n ++ is
+        mkUpd n = [UpdateMarkers n | n /= 0]
+        mkTake d n = [Take d n | d /= 0 || n /= 0]
         (d, is) = compileR body newEnv n
         n = length args
         newEnv = zip args (map mkUpdIndMode [1..]) ++ env
@@ -130,34 +133,42 @@ compileR e@(EAp (EAp (EAp (EVar "if") cond) i1) i2) env d = compileB cond env (d
 compileR e@(EAp (EAp (EVar op) e1) e2) env d | op `elem` aDomain binOps = compileB e env (d, [Return])
 compileR e@(ENum _) env d = compileB e env (d, [Return])
 compileR e@(EAp (EVar "neg") e1) env d = compileB e env (d, [Return])
-compileR (EAp e1 e2) env d = (d2, Push am : is)
+compileR (EAp e1 e2) env d | isAtomicExpr e2 = (d2, Push am : is)
     where
-        (d1, am) = compileA e2 env d
-        (d2, is) = compileR e1 env d1
-compileR e@(EVar v) env d = (d', mkEnter am)
-    where (d', am) = compileA e env d
+        am = compileA e2 env
+        (d2, is) = compileR e1 env d
+compileR (EAp e1 e2) env d = (d2, Move (d+1) amArg : Push (Code [Enter (Arg (d+1))]) : isFun)
+    where
+        (d1, amArg) = compileU e2 (d+1) env (d+1)
+        (d2, isFun) = compileR e1 env d1
+compileR e@(EVar v) env d = (d, mkEnter am)
+    where am = compileA e env
 compileR (ELet isRec defs e) env d = (d', moves ++ is)
     where
-        (dn, moves) = mapAccuml makeMove (d + length defs) (zip defs frameSlots)
+        n = length defs
+        (dn, moves) = mapAccuml makeMove (d + n) (zip defs frameSlots)
         (d', is) = compileR e newEnv dn
-        newEnv = zip (map fst defs) (map mkUpdIndMode frameSlots) ++ env
-        makeMove d ((name, rhs), frameSlot) = (d', Move frameSlot am) where (d', am) = compileA rhs rhsEnv d
+        newEnv = zip (map fst defs) (map mkIndMode frameSlots) ++ env
+        makeMove d ((name, rhs), frameSlot) = (d', Move frameSlot am) where (d', am) = compileU rhs frameSlot rhsEnv d
         rhsEnv | isRec = newEnv
                | otherwise = env
         frameSlots = [d+1..d+length defs]
 compileR e env n = error $ "compileR: not implemented yet: " ++ show e
 
-compileA :: CoreExpr -> TCompilerEnv -> Int -> (Int, TAMode)
-compileA (EVar v) env d | v `elem` aDomain env = (d, aLookup env v (error "compileA: cant happen"))
-compileA (ENum n) env d = (d, IntConst n)
-compileA e env d = (d', Code is)
-    where (d', is) = compileR e env d
+compileA :: CoreExpr -> TCompilerEnv -> TAMode
+compileA (EVar v) env | v `elem` aDomain env = aLookup env v (error "compileA: cant happen")
+compileA (ENum n) env = IntConst n
 
 compileB :: CoreExpr -> TCompilerEnv -> (Int, [Instruction]) -> (Int, [Instruction])
 compileB (EAp (EAp (EVar op) e1) e2) env (d, cont) = compileB e2 env $ compileB e1 env (d, Op (aLookup binOps op (error "compileB: Op not found")) : cont)
 compileB (EAp (EVar "neg") e1) env (d, cont) = compileB e1 env (d, Op Neg : cont)
 compileB (ENum n) env (d, cont) = (d, PushV (IntVConst n) : cont)
 compileB e env (d, cont) = (d', Push (Code cont) : is)
+    where (d', is) = compileR e env d
+
+compileU :: CoreExpr -> Int -> TCompilerEnv -> Int -> (Int, TAMode)
+compileU (ENum n) u env d = (d, IntConst n)
+compileU e u env d = (d', Code (PushMarker u : is))
     where (d', is) = compileR e env d
 
 mkIndMode :: Int -> TAMode
@@ -226,6 +237,14 @@ step (TState [Cond i1 i2] fptr stack vstack dump heap cstore stats) = TState i' 
         (v:vs) = vstack
         i' = if v == 0 then i1 else i2
 step (TState (PushMarker x : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr [] vstack ((fptr, x, stack) : dump) heap cstore stats
+step (TState i@(UpdateMarkers n : instr) fptr stack vstack dump heap cstore stats) | m < n = TState i fptr (stack ++ s) vstack ds heap'' cstore stats
+    where
+        m = length stack
+        ((fu, x, s):ds) = dump
+        (heap', f') = fAlloc heap stack
+        heap'' = fUpdate heap' fu x (i', f')
+        i' = map (Push . Arg) (reverse [1..m]) ++ UpdateMarkers n : instr
+step (TState (UpdateMarkers n : instr) fptr stack vstack dump heap cstore stats) = TState instr fptr stack vstack dump heap cstore stats
 step st = error $ "step: found\n" ++ iDisplay (showInstructions Full (tInstr st))
 
 amToClosure :: TAMode -> FramePtr -> THeap -> CodeStore -> Closure
@@ -305,7 +324,15 @@ showValueStack vstack = iConcat [
     ]
 
 showDump :: TDump -> ISeq
-showDump dump = iNil
+showDump dump = iConcat [iStr "Dump:    [",
+                         iIndent (iInterleave (iStr ", ") (map showDumpItem dump)),
+                         iStr "]", iNewline]
+    where
+        showDumpItem (fptr, slot, stack) = iConcat [
+            iStr "(", showFramePtr fptr, iStr ",",
+            iNum slot, iStr ",",
+            iStr "<stk size ", iNum (length stack), iStr ">)"
+            ]
 
 showClosure :: Closure -> ISeq
 showClosure (i,f) = iConcat [
@@ -353,6 +380,7 @@ showInstruction d (Op op) = iStr "Op " `iAppend` iStr (show op)
 showInstruction d (Cond i1 i2) = iConcat [iStr "Cond ", showInstructions Terse i1, iStr " ", showInstructions Terse i2]
 showInstruction d (Move i a) = iConcat [iStr "Move ", iNum i, iStr " ", showArg Terse a]
 showInstruction d (PushMarker x) = iStr "PushMarker " `iAppend` iNum x
+showInstruction d (UpdateMarkers n) = iStr "UpdateMarkers " `iAppend` iNum n
 
 showArg :: HowMuchToPrint -> TAMode -> ISeq
 showArg d (Arg m) = iStr "Arg " `iAppend` iNum m
