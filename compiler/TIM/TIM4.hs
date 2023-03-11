@@ -4,7 +4,6 @@ import Syntax
 import Heap
 import Assoc
 import ISeq
-import Debug.Trace (trace)
 import UsefulFuns (mapAccuml)
 
 -- definitions --------------------------------------------------------------------------
@@ -184,7 +183,7 @@ mkEnter other_am = [Enter other_am]
 -- evaluator ----------------------------------------------------------------------------
 
 eval :: TState -> [TState]
-eval state | trace ("State is:\n" ++ iDisplay (showState state)) True = state : restStates
+eval state = state : restStates
     where
         restStates | tFinal state = []
                    | otherwise = eval nextState

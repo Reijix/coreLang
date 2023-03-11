@@ -4,7 +4,6 @@ import Syntax
 import Heap
 import Assoc
 import ISeq
-import Debug.Trace (trace)
 
 -- definitions --------------------------------------------------------------------------
 
