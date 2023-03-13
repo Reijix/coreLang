@@ -28,8 +28,8 @@ My goal is to learn some techniques for implementing functional languages, the b
   - [X] TIM1: Minimal TIM
   - [X] TIM2: Adding arithmetic
   - [X] TIM3: Adding let(rec)
-  - [ ] TIM4: Updating
-  - [ ] TIM5: Structured data
+  - [X] TIM4: Updating
+  - [X] TIM5: Structured data
   - [ ] TIM6: CAF
 
 ## Installing and running the compiler
